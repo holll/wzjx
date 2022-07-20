@@ -6,6 +6,8 @@ import re
 import requests
 from bs4 import BeautifulSoup
 
+import toIdm
+
 proxies = dict()
 config_path = './config.json'
 
@@ -59,10 +61,13 @@ def jiexi(url, name):
                 break
     else:
         down_link = aria2_link[0]
-    download(down_link, url, name)
+    if len(os.environ['aria2_rpc']) == 0:
+        downl_idm(down_link, url, name)
+    else:
+        downl_aria2(down_link, url, name)
 
 
-def download(url, referer, name):
+def downl_aria2(url, referer, name):
     RPC_url = os.environ['aria2_rpc']
     json_rpc = json.dumps({
         'id': hashlib.md5(url.encode(encoding='UTF-8')).hexdigest(),
@@ -78,6 +83,10 @@ def download(url, referer, name):
         print(f'下载任务{name}添加成功')
     else:
         print(f'下载任务{name}创建失败', url)
+
+
+def downl_idm(url, referer, name):
+    toIdm.download(url, os.environ['download_path'], name, referer)
 
 
 def get_name(url):
