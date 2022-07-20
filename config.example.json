@@ -1,6 +1,6 @@
 {
   "card": "",
-  "aria2_rpc": "如果使用idm下载，不用填写aria2前缀的配置",
+  "aria2_rpc": "",
   "aria2_token": "",
   "download_path": "",
   "proxies": "http://127.0.0.1:7890 填写你的代理地址或者直接删除这一行"
