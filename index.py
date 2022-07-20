@@ -102,6 +102,8 @@ def get_name(url):
             return f'{name}.{file_type}'
         else:
             return input(f'解析失败，请手动填写文件名({url})')
+    else:
+        return input(f'暂不支持该网盘自动解析文件名，请手动填写({url})')
 
 
 if __name__ == '__main__':
