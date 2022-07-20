@@ -1,4 +1,4 @@
-# wzjx
+# 网赚盘解析真实下载地址
 利用解析网站获取网赚盘下载地址并推送到aria2或IDM
 
 | 支持网盘 |     |         |
@@ -37,7 +37,7 @@
 ```
 
 ## 依赖安装教程<a id="jump2"></a>
-执行`pip install -r requirements.txt`
+执行`pip3 install -r requirements.txt`
 
 或者依次执行
 ```commandline
