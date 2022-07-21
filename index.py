@@ -1,12 +1,14 @@
 import hashlib
 import json
 import os
+import platform
 import re
 
 import requests
 from bs4 import BeautifulSoup
 
-import toIdm
+if platform.system() == 'Windows':
+    import toIdm
 
 proxies = dict()
 config_path = './config.json'
