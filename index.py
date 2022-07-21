@@ -92,12 +92,15 @@ def downl_idm(url, referer, name):
 
 
 def get_name(url):
+    rep = requests.get(url)
+    if rep.status_code == 301 or rep.status_code == 302:
+        url = rep.url
+        rep = requests.get(url)
     if 'rosefile' in url:
         # https://rosefile.net/pm98zjeu2b/xa754.rar.html
         return url.split('/')[-1][:-5]
     elif 'kufile' in url:
         # http://www.kufile.net/file/QUExNTM5NDg1.html
-        rep = requests.get(url)
         if rep.status_code == 200:
             name = re.search(r'<title.*?>(.+?)</title>', rep.text).groups()[0].replace(' - 库云,您值得拥有|KuFile', '')
             file_type = re.search(r'类型：.+?<', rep.text).group()[3:-1]
@@ -114,7 +117,6 @@ def get_name(url):
             return input(f'解析失败，请手动填写文件名({url})')
     elif '567file' in url:
         # https://www.567file.com/file-1387363.html
-        rep = requests.get(url)
         if rep.status_code == 200:
             soup = BeautifulSoup(rep.text, 'html.parser')
             return soup.find('div', {'class': 'span9'}).h1.text
@@ -122,7 +124,6 @@ def get_name(url):
             return input(f'解析失败，请手动填写文件名({url})')
     elif 'xueqiupan' in url:
         # http://www.xueqiupan.com/file-531475.html
-        rep = requests.get(url)
         if rep.status_code == 200:
             soup = BeautifulSoup(rep.text, 'html.parser')
             return soup.find('div', {'class': 'span8'}).h1.text
@@ -130,10 +131,18 @@ def get_name(url):
             return input(f'解析失败，请手动填写文件名({url})')
     elif 'dufile' in url:
         # https://dufile.com/file/0c7184f05ecdce0f.html
-        rep = requests.get(url)
         if rep.status_code == 200:
             soup = BeautifulSoup(rep.text, 'html.parser')
             return soup.find('h2', {'class': 'title'}).text.split('  ')[-1]
+        else:
+            return input(f'解析失败，请手动填写文件名({url})')
+    elif 'xingyaopan' in url:
+        # http://www.xingyaopan.com/fs/tuqlqxxnyzggaag
+        if rep.status_code == 200:
+            soup = BeautifulSoup(rep.text, 'html.parser')
+            name = soup.find('title').text.replace(' - 星耀云', '')
+            file_type = soup.find('img', {'align': 'absbottom'})['src'].split('/')[-1].split('.')[0]
+            return f'{name}.{file_type}'
         else:
             return input(f'解析失败，请手动填写文件名({url})')
     else:
