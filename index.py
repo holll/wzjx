@@ -102,8 +102,9 @@ def get_name(url):
     elif 'kufile' in url:
         # http://www.kufile.net/file/QUExNTM5NDg1.html
         if rep.status_code == 200:
-            name = re.search(r'<title.*?>(.+?)</title>', rep.text).groups()[0].replace(' - 库云,您值得拥有|KuFile', '')
-            file_type = re.search(r'类型：.+?<', rep.text).group()[3:-1]
+            soup = BeautifulSoup(rep.text, 'html.parser')
+            name = soup.find('title').text.replace(' - 库云,您值得拥有|KuFile', '')
+            file_type = soup.find('img', {'align': 'absbottom'})['src'].split('/')[-1].split('.')[0]
             return f'{name}.{file_type}'
         else:
             return input(f'解析失败，请手动填写文件名({url})')
