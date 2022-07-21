@@ -1,21 +1,26 @@
 # 网赚盘解析真实下载地址
+
 利用解析网站获取网赚盘下载地址并推送到aria2或IDM
 
-| 支持网盘 |     |         |
-|------|-----|---------|
-| 飞猫云  | 567 | 库云      |
-| EXP  | 茉香  | ~~火箭云~~ |
-| 雪球云盘 | 先锋云 | DUFILE  |
-| 星耀云盘 | 贵族  | Rose    |
-| 520  | 46  | 77      |
-| 虎盘   | RAR | 达达      |
-| OWN  | 蜜蜂  |         |
+| 支持网盘  |      |         |
+|-------|------|---------|
+| 飞猫云√  | 567√ | 库云√     |
+| EXP   | 茉香   | ~~火箭云~~ |
+| 雪球云盘√ | 先锋云  | DUFILE  |
+| 星耀云盘  | 贵族   | Rose√   |
+| 520   | 46   | 77      |
+| 虎盘    | RAR  | 达达      |
+| OWN   | 蜜蜂   |         |
+**网站名称后面有√的表示支持自动解析文件名**
+
+_想要添加自动解析功能，请提交issue，标题写网盘名称，内容附上网盘文件的分享链接_
 
 解析网站：<http://disk.codest.me/>
 
 卡密购买地址：<https://h5.m.taobao.com/awp/core/detail.htm?id=641655392460>
 
-感谢@Eric Brown提供的调用IDM代码 [教程](https://stackoverflow.com/questions/22587681/use-idminternet-download-manager-api-with-python)
+感谢@Eric
+Brown提供的调用IDM代码 [教程](https://stackoverflow.com/questions/22587681/use-idminternet-download-manager-api-with-python)
 
 ## 使用教程
 
@@ -37,9 +42,11 @@
 ```
 
 ## 依赖安装教程<a id="jump2"></a>
+
 执行`pip3 install -r requirements.txt`
 
 或者依次执行
+
 ```commandline
 pip3 install packages/beautifulsoup4-4.11.1-py3-none-any.whl
 pip3 install packages/comtypes-1.1.11-py2.py3-none-any.whl
@@ -47,6 +54,7 @@ pip3 install packages/requests-2.28.1-py3-none-any.whl
 ```
 
 ## 注意事项
+
 * 不保证代码长期有效
 * 解析网站和淘宝店铺与本人无关，不保证长期有效
 * 综上，卡密购买时长请慎重考虑
