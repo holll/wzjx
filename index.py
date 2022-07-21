@@ -112,6 +112,14 @@ def get_name(url):
             return rep.json()['data']['file_name']
         else:
             return input(f'解析失败，请手动填写文件名({url})')
+    elif '567file' in url:
+        # https://www.567file.com/file-1387363.html
+        rep = requests.get(url)
+        if rep.status_code == 200:
+            soup = BeautifulSoup(rep.text, 'html.parser')
+            return soup.find('div', {'class': 'span9'}).h1.text
+        else:
+            return input(f'解析失败，请手动填写文件名({url})')
     else:
         return input(f'暂不支持该网盘自动解析文件名，请手动填写({url})')
 
