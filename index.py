@@ -99,15 +99,6 @@ def get_name(url):
     if 'rosefile' in url:
         # https://rosefile.net/pm98zjeu2b/xa754.rar.html
         return url.split('/')[-1][:-5]
-    elif 'kufile' in url:
-        # http://www.kufile.net/file/QUExNTM5NDg1.html
-        if rep.status_code == 200:
-            soup = BeautifulSoup(rep.text, 'html.parser')
-            name = soup.find('title').text.replace(' - 库云,您值得拥有|KuFile', '')
-            file_type = soup.find('img', {'align': 'absbottom'})['src'].split('/')[-1].split('.')[0]
-            return f'{name}.{file_type}'
-        else:
-            return input(f'解析失败，请手动填写文件名({url})')
     elif 'feimaoyun' in url:
         # https://www.feimaoyun.com/s/398y7f0l
         key = url.split('/')
@@ -116,18 +107,12 @@ def get_name(url):
             return rep.json()['data']['file_name']
         else:
             return input(f'解析失败，请手动填写文件名({url})')
-    elif '567file' in url:
+    elif 'xueqiupan' in url or '567file' in url:
+        # http://www.xueqiupan.com/file-531475.html
         # https://www.567file.com/file-1387363.html
         if rep.status_code == 200:
             soup = BeautifulSoup(rep.text, 'html.parser')
-            return soup.find('div', {'class': 'span9'}).h1.text
-        else:
-            return input(f'解析失败，请手动填写文件名({url})')
-    elif 'xueqiupan' in url:
-        # http://www.xueqiupan.com/file-531475.html
-        if rep.status_code == 200:
-            soup = BeautifulSoup(rep.text, 'html.parser')
-            return soup.find('div', {'class': 'span8'}).h1.text
+            return soup.find('div', {'class': 'row-fluid'}).div.h1.text
         else:
             return input(f'解析失败，请手动填写文件名({url})')
     elif 'dufile' in url:
@@ -137,11 +122,13 @@ def get_name(url):
             return soup.find('h2', {'class': 'title'}).text.split('  ')[-1]
         else:
             return input(f'解析失败，请手动填写文件名({url})')
-    elif 'xingyaopan' in url:
+    elif 'xingyaopan' in url or 'kufile' in url or 'rarclouds' in url:
         # http://www.xingyaopan.com/fs/tuqlqxxnyzggaag
+        # http://www.kufile.net/file/QUExNTM5NDg1.html
+        # http://www.rarclouds.com/file/QUExNTE5Mjgz.html
         if rep.status_code == 200:
             soup = BeautifulSoup(rep.text, 'html.parser')
-            name = soup.find('title').text.replace(' - 星耀云', '')
+            name = soup.find('title').text.split(' - ')[0]
             file_type = soup.find('img', {'align': 'absbottom'})['src'].split('/')[-1].split('.')[0]
             return f'{name}.{file_type}'
         else:
