@@ -146,6 +146,14 @@ def get_name(url):
             return f'{name}.{file_type}'
         else:
             return input(f'解析失败，请手动填写文件名({url})')
+    elif 'dudujb' in url:
+        # https://www.dudujb.com/file-1105754.html
+        if rep.status_code == 200:
+            soup = BeautifulSoup(rep.text, 'html.parser')
+            soup = soup.findAll('input', {'class': 'txtgray'})[-1]['value']
+            return BeautifulSoup(soup, 'html.parser').text
+        else:
+            return input(f'解析失败，请手动填写文件名({url})')
     else:
         return input(f'暂不支持该网盘自动解析文件名，请手动填写({url})')
 
