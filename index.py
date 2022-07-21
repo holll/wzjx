@@ -93,7 +93,14 @@ def downl_idm(url, referer, name):
 
 def get_name(url):
     rep = requests.get(url)
+    # 针对301或302跳转
     url = rep.url
+    # 针对200状态码的跳转
+    soup = BeautifulSoup(rep.text, 'html.parser')
+    if soup.find('meta').get('http-equiv') == 'refresh':
+        # META http-equiv="refresh" 实现网页自动跳转
+        url = re.search(r'[a-zA-z]+://\S*', soup.find('meta').get('content')).group()
+        rep = requests.get(url)
     if 'rosefile' in url:
         # https://rosefile.net/pm98zjeu2b/xa754.rar.html
         return url.split('/')[-1][:-5]
