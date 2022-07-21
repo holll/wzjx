@@ -93,9 +93,7 @@ def downl_idm(url, referer, name):
 
 def get_name(url):
     rep = requests.get(url)
-    if rep.status_code == 301 or rep.status_code == 302:
-        url = rep.url
-        rep = requests.get(url)
+    url = rep.url
     if 'rosefile' in url:
         # https://rosefile.net/pm98zjeu2b/xa754.rar.html
         return url.split('/')[-1][:-5]
