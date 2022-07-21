@@ -112,9 +112,10 @@ def get_name(url):
             return rep.json()['data']['file_name']
         else:
             return input(f'解析失败，请手动填写文件名({url})')
-    elif 'xueqiupan' in url or '567file' in url:
+    elif 'xueqiupan' in url or '567file' in url or 'ownfile' in url:
         # http://www.xueqiupan.com/file-531475.html
         # https://www.567file.com/file-1387363.html
+        # https://ownfile.net/files/T09mMzQ5ODUx.html
         if rep.status_code == 200:
             soup = BeautifulSoup(rep.text, 'html.parser')
             return soup.find('div', {'class': 'row-fluid'}).div.h1.text
