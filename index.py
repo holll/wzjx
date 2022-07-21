@@ -104,6 +104,14 @@ def get_name(url):
             return f'{name}.{file_type}'
         else:
             return input(f'解析失败，请手动填写文件名({url})')
+    elif 'feimaoyun' in url:
+        # https://www.feimaoyun.com/s/398y7f0l
+        key = url.split('/')
+        rep = requests.post('https://www.feimaoyun.com/index.php/down/new_detailv2', data={'code': key})
+        if rep.status_code == 200:
+            return rep.json()['data']['file_name']
+        else:
+            return input(f'解析失败，请手动填写文件名({url})')
     else:
         return input(f'暂不支持该网盘自动解析文件名，请手动填写({url})')
 
