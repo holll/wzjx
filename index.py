@@ -28,7 +28,7 @@ def init():
     else:
         proxies = None
     print('初始化配置完成，打印关键参数')
-    print(f'卡密：{os.environ["card"]}\nRPC地址：{os.environ["aria2_rpc"]}')
+    print(f'卡密：{os.environ["card"]}\nRPC地址：{os.environ["aria2_rpc"]}\n自动获取文件名：{os.environ["auto_name"]}')
     print(f'aria2_token：{os.environ["aria2_token"]}\n下载地址：{os.environ["download_path"]}\n代理地址：{proxies}\n')
 
 
@@ -95,6 +95,8 @@ def get_name(url):
     rep = requests.get(url)
     # 针对301或302跳转
     url = rep.url
+    if os.environ['auto_name'] == 'false':
+        return url, None
     # 针对200状态码的跳转
     soup = BeautifulSoup(rep.text, 'html.parser')
     if soup.find('meta').get('http-equiv') == 'refresh':
@@ -145,6 +147,17 @@ def get_name(url):
             soup = BeautifulSoup(rep.text, 'html.parser')
             soup = soup.findAll('input', {'class': 'txtgray'})[-1]['value']
             return url, BeautifulSoup(soup, 'html.parser').text
+        else:
+            return url, input(f'解析失败，请手动填写文件名({url})')
+    elif 'xfpan' in url:
+        # http://www.xfpan.cc/file/QUExMzE4MDUx.html
+        if rep.status_code == 200:
+            rep = requests.get(url.replace(r'/file/', r'/down/'), headers={'Referer': url})
+            if rep.status_code == 200:
+                soup = BeautifulSoup(rep.text, 'html.parser')
+                return url, soup.find('title').text.split(' - ')[0]
+            else:
+                return url, input(f'解析失败，请手动填写文件名({url})')
         else:
             return url, input(f'解析失败，请手动填写文件名({url})')
     else:
