@@ -160,6 +160,16 @@ def get_name(url):
                 return url, input(f'解析失败，请手动填写文件名({url})')
         else:
             return url, input(f'解析失败，请手动填写文件名({url})')
+    elif 'expfile' in url:
+        # http://www.expfile.com/file-1464062.html
+        url = url.replace('file-', 'down2-')
+        rep = requests.get(url)
+        if rep.status_code == 200:
+            soup = BeautifulSoup(rep.text, 'html.parser')
+            name = soup.find('title').text.split(' - ')[0]
+            return url, name
+        else:
+            return url, input(f'解析失败，请手动填写文件名({url})')
     else:
         return url, input(f'暂不支持该网盘自动解析文件名，请手动填写({url})')
 
