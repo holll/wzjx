@@ -55,14 +55,13 @@ def jiexi(url, name):
         return
 
     # 对rosefile特殊处理，down-node使用的是sharepoint，速度更快
-    if 'rosefile' in url:
-        down_link = aria2_link[0]
-        for temp_url in aria2_link:
-            if 'down-node' in temp_url:
-                down_link = temp_url
-                break
-    else:
-        down_link = aria2_link[0]
+    down_link = aria2_link[0]
+    # 取消rosefile特殊处理
+    # if 'rosefile' in url:
+    #     for temp_url in aria2_link:
+    #         if 'down-node' in temp_url:
+    #             down_link = temp_url
+    #             break
     if len(os.environ['aria2_rpc']) == 0:
         downl_idm(down_link, url, name)
     else:
