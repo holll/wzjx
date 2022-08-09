@@ -41,6 +41,7 @@ def jiexi(url, name):
     rep = requests.post('http://disk.codest.me/doOrder4Card', data=data, verify=False)
     soup = BeautifulSoup(rep.text, 'html.parser')
     scriptTags = soup.findAll('a', {'class': 'btn btn-info btn-sm'})
+    end_time = soup.find('span', {'class': 'badge badge-pill badge-secondary'}).span.text
 
     # 存储下载地址
     aria2_link = list()
@@ -56,12 +57,14 @@ def jiexi(url, name):
 
     # 对rosefile特殊处理，down-node使用的是sharepoint，速度更快
     down_link = aria2_link[0]
-    # 取消rosefile特殊处理
-    # if 'rosefile' in url:
-    #     for temp_url in aria2_link:
-    #         if 'down-node' in temp_url:
-    #             down_link = temp_url
-    #             break
+
+    if 'rosefile' in url:
+        for temp_url in aria2_link:
+            if 'down-node' in temp_url:
+                down_link = temp_url
+                break
+    print(f'获取下载链接{down_link[:40]}...成功\n{end_time}，请记得及时续费')
+
     if len(os.environ['aria2_rpc']) == 0:
         downl_idm(down_link, url, name)
     else:
@@ -81,7 +84,7 @@ def downl_aria2(url, referer, name):
     })
     response = requests.post(url=RPC_url, data=json_rpc, proxies=None)
     if response.status_code == 200:
-        print(f'下载任务{name}添加成功')
+        print(f'下载任务{name}添加成功\n')
     else:
         print(f'下载任务{name}创建失败', url)
 
@@ -179,4 +182,5 @@ if __name__ == '__main__':
     while True:
         url = input('请输入下载链接：')
         url, name = get_name(url)
+        print(f'获取文件名{name}成功')
         jiexi(url, name)
