@@ -40,8 +40,13 @@ def jiexi(url, name):
     }
     rep = requests.post('http://disk.codest.me/doOrder4Card', data=data, verify=False)
     soup = BeautifulSoup(rep.text, 'html.parser')
-    scriptTags = soup.findAll('a', {'class': 'btn btn-info btn-sm'})
-    end_time = soup.find('span', {'class': 'badge badge-pill badge-secondary'}).span.text
+    try:
+        scriptTags = soup.findAll('a', {'class': 'btn btn-info btn-sm'})
+        end_time = soup.find('span', {'class': 'badge badge-pill badge-secondary'}).span.text
+    except Exception as e:
+        print('错误类型是', e.__class__.__name__)
+        print('错误明细是', e)
+        return
 
     # 存储下载地址
     aria2_link = list()
@@ -94,6 +99,12 @@ def downl_idm(url, referer, name):
 
 
 def get_name(url):
+    def is_in_list(arr: list, value: str):
+        for web in arr:
+            if web in value:
+                return True
+        return False
+
     rep = requests.get(url)
     # 针对301或302跳转
     url = rep.url
@@ -116,11 +127,12 @@ def get_name(url):
             return url, rep.json()['data']['file_name']
         else:
             return url, input(f'解析失败，请手动填写文件名({url})')
-    elif 'xueqiupan' in url or '567file' in url or 'ownfile' in url or 'feiyupan' in url:
+    elif is_in_list(['xueqiupan', '567file', 'ownfile', 'feiyupan', 'xunniupan'], url):
         # http://www.xueqiupan.com/file-531475.html
         # https://www.567file.com/file-1387363.html
         # https://ownfile.net/files/T09mMzQ5ODUx.html
         # http://www.feiyupan.com/file-1400.html
+        # http://www.xunniupan.com/file-2475170.html
         if rep.status_code == 200:
             soup = BeautifulSoup(rep.text, 'html.parser')
             return url, soup.find('div', {'class': 'row-fluid'}).div.h1.text
@@ -133,7 +145,7 @@ def get_name(url):
             return url, soup.find('h2', {'class': 'title'}).text.split('  ')[-1]
         else:
             return url, input(f'解析失败，请手动填写文件名({url})')
-    elif 'xingyaopan' in url or 'kufile' in url or 'rarclouds' in url:
+    elif is_in_list(['xingyaopan', 'kufile', 'rarclouds'], url):
         # http://www.xingyaopan.com/fs/tuqlqxxnyzggaag
         # http://www.kufile.net/file/QUExNTM5NDg1.html
         # http://www.rarclouds.com/file/QUExNTE5Mjgz.html
