@@ -10,26 +10,28 @@ from bs4 import BeautifulSoup
 if platform.system() == 'Windows':
     import toIdm
 
-proxies = dict()
 config_path = './config.json'
 
 
 def init():
-    global proxies
+    global s, proxies
+    s = requests.session()
+    s.headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.0.0 Safari/537.36'
+    }
+    s.trust_env = False
     with open(config_path, 'r', encoding='utf-8') as f:
         config = json.load(f)
     for key in config:
         os.environ[key] = config[key]
-    if config.get('proxies'):
-        proxies = {
-            'http': config.get('proxies'),
-            'https': config.get('proxies')
-        }
-    else:
-        proxies = None
+    proxies = {
+        'http': config.get('proxies'),
+        'https': config.get('proxies')
+    }
     print('初始化配置完成，打印关键参数')
     print(f'卡密：{os.environ["card"]}\nRPC地址：{os.environ["aria2_rpc"]}\n自动获取文件名：{os.environ["auto_name"]}')
-    print(f'aria2_token：{os.environ["aria2_token"]}\n下载地址：{os.environ["download_path"]}\n代理地址：{proxies}\n')
+    print(f'aria2_token：{config.get("aria2_token")}\n下载地址：{config.get("download_path")}')
+    print(f'代理地址：{config.get("proxies")}\n')
 
 
 def jiexi(url, name):
@@ -38,7 +40,7 @@ def jiexi(url, name):
         'url': url,
         'card': os.environ['card']
     }
-    rep = requests.post('http://disk.codest.me/doOrder4Card', data=data, verify=False)
+    rep = s.post('http://disk.codest.me/doOrder4Card', data=data, verify=False)
     soup = BeautifulSoup(rep.text, 'html.parser')
     try:
         scriptTags = soup.findAll('a', {'class': 'btn btn-info btn-sm'})
@@ -46,6 +48,7 @@ def jiexi(url, name):
     except Exception as e:
         print('错误类型是', e.__class__.__name__)
         print('错误明细是', e)
+        print(soup)
         return
 
     # 存储下载地址
@@ -63,7 +66,7 @@ def jiexi(url, name):
     # 对rosefile特殊处理，down-node使用的是sharepoint，速度更快
     down_link = aria2_link[0]
 
-    if 'rosefile' in url:
+    if 'rosefile' in url and False:
         for temp_url in aria2_link:
             if 'down-node' in temp_url:
                 down_link = temp_url
@@ -87,7 +90,7 @@ def downl_aria2(url, referer, name):
             [url],
             {'dir': os.environ['download_path'], 'out': name, 'referer': referer}]
     })
-    response = requests.post(url=RPC_url, data=json_rpc, proxies=None)
+    response = requests.post(url=RPC_url, data=json_rpc,proxies=proxies)
     if response.status_code == 200:
         print(f'下载任务{name}添加成功\n')
     else:
@@ -105,24 +108,27 @@ def get_name(url):
                 return True
         return False
 
-    rep = requests.get(url)
+    rep = s.get(url)
+    if rep.status_code != 200:
+        print('网盘访问失败，可以关闭自动解析文件名再次尝试')
+        return url, input('可以手动输入文件名：')
     # 针对301或302跳转
     url = rep.url
-    if os.environ['auto_name'] == 'false':
-        return url, None
     # 针对200状态码的跳转
     soup = BeautifulSoup(rep.text, 'html.parser')
     if soup.find('meta').get('http-equiv') == 'refresh':
         # META http-equiv="refresh" 实现网页自动跳转
         url = re.search(r'[a-zA-z]+://\S*', soup.find('meta').get('content')).group()
-        rep = requests.get(url)
+        rep = requests.get(url, proxies=None)
+    if os.environ['auto_name'] == 'false':
+        return url, None
     if 'rosefile' in url:
         # https://rosefile.net/pm98zjeu2b/xa754.rar.html
         return url, url.split('/')[-1][:-5]
     elif 'feimaoyun' in url:
         # https://www.feimaoyun.com/s/398y7f0l
         key = url.split('/')
-        rep = requests.post('https://www.feimaoyun.com/index.php/down/new_detailv2', data={'code': key})
+        rep = requests.post('https://www.feimaoyun.com/index.php/down/new_detailv2', data={'code': key}, proxies=None)
         if rep.status_code == 200:
             return url, rep.json()['data']['file_name']
         else:
@@ -167,7 +173,7 @@ def get_name(url):
     elif 'xfpan' in url:
         # http://www.xfpan.cc/file/QUExMzE4MDUx.html
         if rep.status_code == 200:
-            rep = requests.get(url.replace(r'/file/', r'/down/'), headers={'Referer': url})
+            rep = requests.get(url.replace(r'/file/', r'/down/'), headers={'Referer': url}, proxies=None)
             if rep.status_code == 200:
                 soup = BeautifulSoup(rep.text, 'html.parser')
                 return url, soup.find('title').text.split(' - ')[0]
@@ -178,7 +184,7 @@ def get_name(url):
     elif 'expfile' in url:
         # http://www.expfile.com/file-1464062.html
         url = url.replace('file-', 'down2-')
-        rep = requests.get(url)
+        rep = requests.get(url, proxies=None)
         if rep.status_code == 200:
             soup = BeautifulSoup(rep.text, 'html.parser')
             name = soup.find('title').text.split(' - ')[0]
