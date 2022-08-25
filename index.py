@@ -3,6 +3,7 @@ import json
 import os
 import platform
 import re
+import sys
 
 import requests
 from bs4 import BeautifulSoup
@@ -31,7 +32,7 @@ def init():
     print('初始化配置完成，打印关键参数')
     print(f'卡密：{os.environ["card"]}\nRPC地址：{os.environ["aria2_rpc"]}\n自动获取文件名：{os.environ["auto_name"]}')
     print(f'aria2_token：{config.get("aria2_token")}\n下载地址：{config.get("download_path")}')
-    print(f'代理地址：{config.get("proxies")}\n')
+    sys.stdout.flush()
 
 
 def jiexi(url, name):
@@ -49,6 +50,7 @@ def jiexi(url, name):
         print('错误类型是', e.__class__.__name__)
         print('错误明细是', e)
         print(soup)
+        sys.stdout.flush()
         return
 
     # 存储下载地址
@@ -61,6 +63,7 @@ def jiexi(url, name):
     if len(aria2_link) == 0:
         print('未获取到下载链接', url, name)
         print(rep.text)
+        sys.stdout.flush()
         return
 
     # 对rosefile特殊处理，down-node使用的是sharepoint，速度更快
@@ -71,7 +74,7 @@ def jiexi(url, name):
             if 'down-node' in temp_url:
                 down_link = temp_url
                 break
-    print(f'获取下载链接{down_link[:40]}...成功\n{end_time}，请记得及时续费')
+    print(f'获取下载链接{down_link[:40]}...成功\n{end_time}，请记得及时续费', flush=True)
 
     if len(os.environ['aria2_rpc']) == 0:
         downl_idm(down_link, url, name)
@@ -90,11 +93,11 @@ def downl_aria2(url, referer, name):
             [url],
             {'dir': os.environ['download_path'], 'out': name, 'referer': referer}]
     })
-    response = requests.post(url=RPC_url, data=json_rpc,proxies=proxies)
+    response = requests.post(url=RPC_url, data=json_rpc)
     if response.status_code == 200:
-        print(f'下载任务{name}添加成功\n')
+        print(f'下载任务{name}添加成功\n', flush=True)
     else:
-        print(f'下载任务{name}创建失败', url)
+        print(f'下载任务{name}创建失败', url, flush=True)
 
 
 def downl_idm(url, referer, name):
@@ -110,7 +113,7 @@ def get_name(url):
 
     rep = s.get(url)
     if rep.status_code != 200:
-        print('网盘访问失败，可以关闭自动解析文件名再次尝试')
+        print('网盘访问失败，可以关闭自动解析文件名再次尝试', flush=True)
         return url, input('可以手动输入文件名：')
     # 针对301或302跳转
     url = rep.url
@@ -200,5 +203,5 @@ if __name__ == '__main__':
     while True:
         url = input('请输入下载链接：')
         url, name = get_name(url)
-        print(f'获取文件名{name}成功')
+        print(f'获取文件名{name}成功', flush=True)
         jiexi(url, name)
