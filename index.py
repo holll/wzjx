@@ -99,10 +99,14 @@ def downl_aria2(url, referer, name):
             [url],
             {'dir': os.environ['download_path'], 'out': name, 'referer': referer}]
     })
+    '''
+    # 如果需要启用代理访问aria2RPC，取消注释本段代码
     s_with_env = requests.session()
     s_with_env.mount('http://', HTTPAdapter(max_retries=retries))
     s_with_env.mount('https://', HTTPAdapter(max_retries=retries))
     response = s_with_env.post(url=RPC_url, data=json_rpc)
+    '''
+    response = s.post(url=RPC_url, data=json_rpc)
     if response.status_code == 200:
         print(f'下载任务{name}添加成功\n', flush=True)
     else:
