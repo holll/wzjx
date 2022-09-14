@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import json
 import os
@@ -5,6 +6,7 @@ import platform
 import re
 import sys
 
+import pyperclip
 import requests
 from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
@@ -46,6 +48,7 @@ def jiexi(url, name):
         'url': url,
         'card': os.environ['card']
     }
+    referer = url
     rep = s.post('http://disk.codest.me/doOrder4Card', data=data)
     soup = BeautifulSoup(rep.text, 'html.parser')
     try:
@@ -82,39 +85,58 @@ def jiexi(url, name):
     url_domain = re.search('(http|https)://(www.)?(\w+(\.)?)+', down_link).group()
     print(f'获取下载链接{url_domain}/...成功\n{end_time}，请记得及时续费', flush=True)
 
+    download(down_link, referer, name, is_xc='')
+
+
+def download(url, referer, name, is_xc: str):
+    def downl_idm(url, referer, name):
+        toIdm.download(url, os.environ['download_path'], name, referer)
+
+    def downl_aria2(url, referer, name):
+        RPC_url = os.environ['aria2_rpc']
+        json_rpc = json.dumps({
+            'id': hashlib.md5(url.encode(encoding='UTF-8')).hexdigest(),
+            'jsonrpc': '2.0',
+            'method': 'aria2.addUri',
+            'params': [
+                f'token:{os.environ["aria2_token"]}',
+                [url],
+                {'dir': os.environ['download_path'], 'out': name, 'referer': referer}]
+        })
+        '''
+        # 如果需要启用代理访问aria2RPC，取消注释本段代码
+        s_with_env = requests.session()
+        s_with_env.mount('http://', HTTPAdapter(max_retries=retries))
+        s_with_env.mount('https://', HTTPAdapter(max_retries=retries))
+        response = s_with_env.post(url=RPC_url, data=json_rpc)
+        '''
+        try:
+            response = s.post(url=RPC_url, data=json_rpc)
+            if response.status_code == 200:
+                print(f'下载任务{name}添加成功\n', flush=True)
+            else:
+                print(f'下载任务{name}创建失败', name, flush=True)
+                print(f'续传码：XC://{xc_ma}', flush=True)
+                pyperclip.copy(xc_ma)
+                print('已将续传码复制到剪贴板', flush=True)
+        except Exception as e:
+            print(f'添加任务失败，错误原因{e.__class__.__name__}', flush=True)
+            print(f'续传码：XC://{xc_ma}', flush=True)
+            pyperclip.copy(xc_ma)
+            print('已将续传码复制到剪贴板', flush=True)
+
+    if is_xc != '':
+        xc_ma = is_xc.replace('XC://', '')
+        tmp_data = base64.b64decode(xc_ma).decode().split('###')
+        url = tmp_data[0]
+        referer = tmp_data[1]
+        name = tmp_data[2]
+    else:
+        xc_ma = base64.b64encode(f'{url}###{referer}###{name}'.encode()).decode()
     if len(os.environ['aria2_rpc']) == 0:
-        downl_idm(down_link, url, name)
+        downl_idm(url, referer, name)
     else:
-        downl_aria2(down_link, url, name)
-
-
-def downl_aria2(url, referer, name):
-    RPC_url = os.environ['aria2_rpc']
-    json_rpc = json.dumps({
-        'id': hashlib.md5(url.encode(encoding='UTF-8')).hexdigest(),
-        'jsonrpc': '2.0',
-        'method': 'aria2.addUri',
-        'params': [
-            f'token:{os.environ["aria2_token"]}',
-            [url],
-            {'dir': os.environ['download_path'], 'out': name, 'referer': referer}]
-    })
-    '''
-    # 如果需要启用代理访问aria2RPC，取消注释本段代码
-    s_with_env = requests.session()
-    s_with_env.mount('http://', HTTPAdapter(max_retries=retries))
-    s_with_env.mount('https://', HTTPAdapter(max_retries=retries))
-    response = s_with_env.post(url=RPC_url, data=json_rpc)
-    '''
-    response = s.post(url=RPC_url, data=json_rpc)
-    if response.status_code == 200:
-        print(f'下载任务{name}添加成功\n', flush=True)
-    else:
-        print(f'下载任务{name}创建失败', url, flush=True)
-
-
-def downl_idm(url, referer, name):
-    toIdm.download(url, os.environ['download_path'], name, referer)
+        downl_aria2(url, referer, name)
 
 
 def get_name(url):
@@ -214,7 +236,10 @@ def get_name(url):
 if __name__ == '__main__':
     init()
     while True:
-        url = input('请输入下载链接：')
-        url, name = get_name(url)
-        print(f'获取文件名{name}成功', flush=True)
-        jiexi(url, name)
+        url = input('请输入下载链接/续传码：')
+        if 'XC://' in url:
+            download('', '', '', is_xc=url)
+        else:
+            url, name = get_name(url)
+            print(f'获取文件名{name}成功', flush=True)
+            jiexi(url, name)
