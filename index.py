@@ -117,12 +117,12 @@ def download(url, referer, name, is_xc: str):
             else:
                 print(f'下载任务{name}创建失败', name, flush=True)
                 print(f'续传码：XC://{xc_ma}', flush=True)
-                pyperclip.copy(xc_ma)
+                pyperclip.copy(f'XC://{xc_ma}')
                 print('已将续传码复制到剪贴板', flush=True)
         except Exception as e:
             print(f'添加任务失败，错误原因{e.__class__.__name__}', flush=True)
             print(f'续传码：XC://{xc_ma}', flush=True)
-            pyperclip.copy(xc_ma)
+            pyperclip.copy(f'XC://{xc_ma}')
             print('已将续传码复制到剪贴板', flush=True)
 
     if is_xc != '':
