@@ -77,10 +77,19 @@ def jiexi(url, name):
     # 对rosefile特殊处理，down-node使用的是sharepoint，速度更快
     down_link = aria2_link[0]
 
-    if 'rosefile' in url and False:
+    # down-node偶尔会出现错误，增加重试机制
+    # 当程序第二次解析同一个链接时，禁用down-node节点
+    try:
+        _ = os.environ[name]
+        isFirst = False
+    except KeyError:
+        isFirst = True
+    if 'rosefile' in url and isFirst:
         for temp_url in aria2_link:
             if 'down-node' in temp_url:
                 down_link = temp_url
+                # 赋值任意数据均可，目的是让环境变量不为空
+                os.environ[name] = '1'
                 break
     url_domain = re.search('(http|https)://(www.)?(\w+(\.)?)+', down_link).group()
     print(f'获取下载链接{url_domain}/...成功\n{end_time}，请记得及时续费', flush=True)
