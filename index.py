@@ -217,8 +217,9 @@ def get_name(url):
             return url, BeautifulSoup(soup, 'html.parser').text
         else:
             return url, input(f'解析失败，请手动填写文件名({url})')
-    elif 'xfpan' in url:
+    elif is_in_list(['xfpan', 'skyfileos'], url):
         # http://www.xfpan.cc/file/QUExMzE4MDUx.html
+        # https://www.skyfileos.com/90ea219698c62ea5
         if rep.status_code == 200:
             rep = s.get(url.replace(r'/file/', r'/down/'), headers={'Referer': url})
             if rep.status_code == 200:
