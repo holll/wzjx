@@ -155,14 +155,14 @@ async def get_name(url):
         return False
 
     name = None
-    if os.environ['auto_name'] == 'false':
-        return name
     rep = s.get(url)
     if rep.status_code != 200:
         print('网盘访问失败，可以关闭自动解析文件名再次尝试', flush=True)
         return name
     # 针对301或302跳转
     url = rep.url
+    if os.environ['auto_name'] == 'false':
+        return name, url
     # 针对200状态码的跳转
     soup = BeautifulSoup(rep.text, 'html.parser')
     if soup.find('meta').get('http-equiv') == 'refresh':
@@ -243,7 +243,7 @@ async def get_name(url):
     else:
         name = input(f'暂不支持该网盘自动解析文件名，请手动填写({url})')
     print(f'获取文件名{name}成功', flush=True)
-    return name
+    return name, url
 
 
 async def main():
@@ -254,7 +254,7 @@ async def main():
             download('', '', '', is_xc=url)
         else:
             name, down_link = await asyncio.gather(get_name(url), jiexi(url))
-            download(down_link, url, name, is_xc='')
+            download(down_link, name[1], name[0], is_xc='')
 
 
 if __name__ == '__main__':
