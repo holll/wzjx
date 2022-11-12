@@ -18,6 +18,23 @@ if platform.system() == 'Windows':
 
 config_path = './config.json'
 retries = Retry(total=5, backoff_factor=0.1)
+main_domain = [
+    'rosefile',
+    'feimaoyun',
+    'xueqiupan',
+    '567file',
+    'ownfile',
+    'feiyupan',
+    'xunniupan',
+    'dufile',
+    'xingyaopan',
+    'kufile',
+    'rarclouds',
+    'dudujb',
+    'xfpan',
+    'skyfileos',
+    'expfile'
+]
 
 
 def init():
@@ -155,14 +172,22 @@ async def get_name(url):
         return False
 
     name = None
+    if os.environ['auto_name'] == 'false':
+        domain = url.split('/')[2]
+        if not is_in_list(main_domain, domain):
+            rep = s.get(url)
+            if rep.status_code != 200:
+                print('网盘访问失败，可以关闭自动解析文件名再次尝试', flush=True)
+                return name
+            # 针对301或302跳转
+            url = rep.url
+        return name, url
     rep = s.get(url)
     if rep.status_code != 200:
         print('网盘访问失败，可以关闭自动解析文件名再次尝试', flush=True)
         return name
     # 针对301或302跳转
     url = rep.url
-    if os.environ['auto_name'] == 'false':
-        return name, url
     # 针对200状态码的跳转
     soup = BeautifulSoup(rep.text, 'html.parser')
     if soup.find('meta').get('http-equiv') == 'refresh':
