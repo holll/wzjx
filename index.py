@@ -6,6 +6,7 @@ import os
 import platform
 import re
 import sys
+import time
 
 import pyperclip
 import requests
@@ -67,6 +68,11 @@ async def jiexi(url):
         'card': os.environ['card']
     }
     rep = s.post('http://disk.codest.me/doOrder4Card', data=data)
+    if 'toCaptcha' in rep.url:
+        pyperclip.copy('http://disk.codest.me/toCaptcha/' + os.environ['card'])
+        print('遭遇到机器验证，已将验证网址复制到剪贴板，程序将在5秒后退出')
+        time.sleep(5)
+        exit(1)
     soup = BeautifulSoup(rep.text, 'html.parser')
     try:
         scriptTags = soup.findAll('a', {'class': 'btn btn-info btn-sm'})
@@ -283,4 +289,9 @@ async def main():
 
 
 if __name__ == '__main__':
+    args = sys.argv
+    if len(args) == 0:
+        config_path = './config.json'
+    else:
+        config_path = args[1]
     asyncio.run(main())
