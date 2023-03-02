@@ -173,7 +173,7 @@ def download(url, referer, name, is_xc: str):
         name = tmp_data[2]
     else:
         xc_ma = base64.b64encode(f'{url}###{referer}###{name}'.encode()).decode()
-    if len(os.environ['xc']) != 0:
+    if os.environ.get('xc') is not None:
         print(xc_ma)
         return
     if len(os.environ['aria2_rpc']) == 0:
