@@ -13,12 +13,14 @@ import requests
 from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+import urllib3
 
+urllib3.util.timeout.Timeout._validate_timeout = lambda *args: 4 if args[2] != 'total' else None
 if platform.system() == 'Windows':
     import toIdm
 
 config_path = './config.json'
-retries = Retry(total=5, backoff_factor=0.1)
+retries = Retry(total=3, backoff_factor=0.1)
 main_domain = [
     'rosefile',
     'feimaoyun',
@@ -26,7 +28,7 @@ main_domain = [
     '567file',
     'ownfile',
     'feiyupan',
-    'xunniupan',
+    # 'xunniupan',
     'dufile',
     'xingyaopan',
     'kufile',
@@ -74,7 +76,7 @@ async def jiexi(url):
         time.sleep(5)
         exit(1)
     soup = BeautifulSoup(rep.text, 'html.parser')
-    if rep.status_code == 200:
+    if 'confirm' not in rep.url:
         err_text = soup.find('div', {'class': 'col text-center'}).findAll('p')[-1].text
         print(err_text)
         return None
@@ -113,6 +115,7 @@ async def jiexi(url):
         isFirst = False
     except KeyError:
         isFirst = True
+    # isFirst = False
     if 'rosefile' in url and isFirst:
         for temp_url in aria2_link:
             if 'down-node' in temp_url:
@@ -275,6 +278,13 @@ async def get_name(url):
                 soup = BeautifulSoup(rep.text, 'html.parser')
                 name = soup.find('title').text.split(' - ')[0]
                 name = name
+            else:
+                name = input(f'解析失败，请手动填写文件名({url})')
+        elif 'baigepan' in url:
+            # https://www.baigepan.com/s/iU36ven9Wu
+            if rep.status_code == 200:
+                soup = BeautifulSoup(rep.text, 'html.parser')
+                name = soup.find('title').text.split(' - ')[0]
             else:
                 name = input(f'解析失败，请手动填写文件名({url})')
         else:
