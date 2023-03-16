@@ -71,8 +71,12 @@ async def jiexi(url):
     }
     rep = s.post('http://disk.codest.me/doOrder4Card', data=data)
     if 'toCaptcha' in rep.url:
-        pyperclip.copy('http://disk.codest.me/toCaptcha/' + os.environ['card'])
-        print('遭遇到机器验证，已将验证网址复制到剪贴板，程序将在5秒后退出')
+        print('遭遇到机器验证')
+        if platform.system() == 'Windows':
+            pyperclip.copy('http://disk.codest.me/toCaptcha/' + os.environ['card'])
+            print('已将验证网址复制到剪贴板，程序将在5秒后退出')
+        else:
+            print('http://disk.codest.me/toCaptcha/' + os.environ['card'])
         time.sleep(5)
         exit(1)
     soup = BeautifulSoup(rep.text, 'html.parser')
@@ -157,13 +161,17 @@ def download(url, referer, name, is_xc: str):
             else:
                 print(f'下载任务{name}创建失败', name, flush=True)
                 print(f'续传码：XC://{xc_ma}', flush=True)
-                pyperclip.copy(f'XC://{xc_ma}')
-                print('已将续传码复制到剪贴板', flush=True)
+                if platform.system() == 'Windows':
+                    pyperclip.copy(f'XC://{xc_ma}')
+                    print('已将续传码复制到剪贴板', flush=True)
         except Exception as e:
             print(f'添加任务失败，错误原因{e.__class__.__name__}', flush=True)
             print(f'续传码：XC://{xc_ma}', flush=True)
-            pyperclip.copy(f'XC://{xc_ma}')
-            print('已将续传码复制到剪贴板', flush=True)
+            if platform.system() == 'Windows':
+                pyperclip.copy(f'XC://{xc_ma}')
+                print('已将续传码复制到剪贴板', flush=True)
+            else:
+                print(f'XC://{xc_ma}', flush=True)
 
     if is_xc != '':
         xc_ma = is_xc.replace('XC://', '')
@@ -174,7 +182,7 @@ def download(url, referer, name, is_xc: str):
     else:
         xc_ma = base64.b64encode(f'{url}###{referer}###{name}'.encode()).decode()
     if os.environ.get('xc') is not None:
-        print(xc_ma)
+        print(f'XC://{xc_ma}')
         return
     if len(os.environ['aria2_rpc']) == 0:
         downl_idm(url, referer, name)
