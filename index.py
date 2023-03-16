@@ -10,10 +10,10 @@ import time
 
 import pyperclip
 import requests
+import urllib3
 from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-import urllib3
 
 urllib3.util.timeout.Timeout._validate_timeout = lambda *args: 4 if args[2] != 'total' else None
 if platform.system() == 'Windows':
@@ -224,7 +224,7 @@ async def get_name(url):
                 name = rep.json()['data']['file_name']
             else:
                 name = input(f'解析失败，请手动填写文件名({url})')
-        elif is_in_list(['xueqiupan', '567file', 'ownfile', 'feiyupan', 'xunniupan'], url):
+        elif is_in_list(['xueqiupan', '567file', 'ownfile', 'feiyupan', 'xunniu'], url):
             # http://www.xueqiupan.com/file-531475.html
             # https://www.567file.com/file-1387363.html
             # https://ownfile.net/files/T09mMzQ5ODUx.html
