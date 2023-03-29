@@ -38,6 +38,7 @@ main_domain = [
     'skyfileos',
     'expfile'
 ]
+pan_domain = 'http://disk.codest.me'
 
 
 def init():
@@ -69,14 +70,14 @@ async def jiexi(url):
         'url': url,
         'card': os.environ['card']
     }
-    rep = s.post('http://disk.codest.me/doOrder4Card', data=data)
+    rep = s.post(f'{pan_domain}/doOrder4Card', data=data)
     if 'toCaptcha' in rep.url:
         print('遭遇到机器验证')
         if platform.system() == 'Windows':
-            pyperclip.copy('http://disk.codest.me/toCaptcha/' + os.environ['card'])
+            pyperclip.copy(f'{pan_domain}/toCaptcha/' + os.environ['card'])
             print('已将验证网址复制到剪贴板，程序将在5秒后退出')
         else:
-            print('http://disk.codest.me/toCaptcha/' + os.environ['card'])
+            print(f'{pan_domain}/toCaptcha/' + os.environ['card'])
         time.sleep(5)
         exit(1)
     soup = BeautifulSoup(rep.text, 'html.parser')
@@ -255,7 +256,7 @@ async def get_name(url):
                 name = soup.find('h2', {'class': 'title'}).text.split('  ')[-1]
             else:
                 name = input(f'解析失败，请手动填写文件名({url})')
-        elif is_in_list(['xingyaopan', 'kufile', 'rarclouds'], url):
+        elif is_in_list(['xingyaopan', 'kufile', 'rar'], url):
             # http://www.xingyaopan.com/fs/tuqlqxxnyzggaag
             # http://www.kufile.net/file/QUExNTM5NDg1.html
             # http://www.rarclouds.com/file/QUExNTE5Mjgz.html
@@ -322,6 +323,28 @@ async def main():
             if down_link is None:
                 continue
             download(down_link, name[1], name[0], is_xc='')
+
+
+def doCaptcha():
+    print(f'{pan_domain}/toCaptchaImg/{os.environ["card"]}')
+    zCode = input("请输入验证码：")
+    headers = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Origin': pan_domain,
+        'Referer': f'{pan_domain}/toCaptcha/{os.environ["card"]}',
+    }
+
+    data = {
+        'card': '6D04F5E26393C157AE80C9FF2CADB666',
+        'answer': zCode,
+    }
+
+    rep = requests.post(f'{pan_domain}/doCaptcha', headers=headers, data=data, allow_redirects=False, verify=False)
+    if rep.status_code == 302:
+        print('验证成功')
+    else:
+        print('验证失败')
+        doCaptcha()
 
 
 if __name__ == '__main__':
