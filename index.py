@@ -325,28 +325,6 @@ async def main():
             download(down_link, name[1], name[0], is_xc='')
 
 
-def doCaptcha():
-    print(f'{pan_domain}/toCaptchaImg/{os.environ["card"]}')
-    zCode = input("请输入验证码：")
-    headers = {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Origin': pan_domain,
-        'Referer': f'{pan_domain}/toCaptcha/{os.environ["card"]}',
-    }
-
-    data = {
-        'card': '6D04F5E26393C157AE80C9FF2CADB666',
-        'answer': zCode,
-    }
-
-    rep = requests.post(f'{pan_domain}/doCaptcha', headers=headers, data=data, allow_redirects=False, verify=False)
-    if rep.status_code == 302:
-        print('验证成功')
-    else:
-        print('验证失败')
-        doCaptcha()
-
-
 if __name__ == '__main__':
     args = sys.argv
     if len(args) == 1:
