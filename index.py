@@ -257,7 +257,7 @@ async def get_name(url):
                 name = soup.find('h2', {'class': 'title'}).text.split('  ')[-1]
             else:
                 name = input(f'解析失败，请手动填写文件名({url})')
-        elif is_in_list(['xingyaopan', 'kufile', 'rar'], url):
+        elif is_in_list(['xingyao', 'xywpan','kufile', 'rar'], url):
             # http://www.xingyaopan.com/fs/tuqlqxxnyzggaag
             # http://www.kufile.net/file/QUExNTM5NDg1.html
             # http://www.rarclouds.com/file/QUExNTE5Mjgz.html
