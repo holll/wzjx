@@ -61,3 +61,14 @@ pip3 install packages/requests-2.28.1-py3-none-any.whl
 * 不保证代码长期有效
 * 解析网站和淘宝店铺与本人无关，不保证长期有效
 * 综上，卡密购买时长请慎重考虑
+
+
+## 贡献者们
+
+> 感谢所有让这个项目变得更好的贡献者们！
+
+[![Star History Chart](https://contrib.rocks/image?repo=holll/wzjx)](https://github.com/holll/wzjx/graphs/contributors)
+
+## Star历史
+
+![Star History Chart](https://api.star-history.com/svg?repos=holll/wzjx&type=Date)
