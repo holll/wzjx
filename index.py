@@ -16,7 +16,7 @@ from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-urllib3.util.timeout.Timeout._validate_timeout = lambda *args: 4 if args[2] != 'total' else None
+urllib3.util.timeout.Timeout._validate_timeout = lambda *args: 10 if args[2] != 'total' else None
 if platform.system() == 'Windows':
     import toIdm
 
@@ -39,7 +39,7 @@ main_domain = [
     'skyfileos',
     'expfile'
 ]
-pan_domain = 'http://disk.codest.me'
+pan_domain = 'http://haoduopan.cn'
 
 
 def init():
@@ -71,7 +71,11 @@ async def jiexi(url):
         'url': url,
         'card': os.environ['card']
     }
-    rep = s.post(f'{pan_domain}/doOrder4Card', data=data)
+    try:
+        rep = s.post(f'{pan_domain}/doOrder4Card', data=data)
+    except requests.exceptions.ConnectionError:
+        print('下载链接解析失败')
+        return None
     if 'toCaptcha' in rep.url:
         print('遭遇到机器验证')
         if platform.system() == 'Windows':
@@ -228,9 +232,13 @@ async def get_name(url):
         print('网盘访问失败，可以关闭自动解析文件名再次尝试', flush=True)
         return name, url
     try:
-        if 'rosefile' in url:
+        if is_in_list(['rosefile', 'koalaclouds'], url):
             # https://rosefile.net/pm98zjeu2b/xa754.rar.html
-            name = url.split('/')[-1][:-5]
+            # https://koalaclouds.com/971f6c37836c82fb/xm1901.part1.rar
+            if 'rosefile' in url:
+                name = url.split('/')[-1][:-5]
+            elif 'koalaclouds' in url:
+                name = url.split('/')[-1]
         elif 'feimaoyun' in url:
             # https://www.feimaoyun.com/s/398y7f0l
             key = url.split('/')
@@ -257,7 +265,7 @@ async def get_name(url):
                 name = soup.find('h2', {'class': 'title'}).text.split('  ')[-1]
             else:
                 name = input(f'解析失败，请手动填写文件名({url})')
-        elif is_in_list(['xingyao', 'xywpan','kufile', 'rar'], url):
+        elif is_in_list(['xingyao', 'xywpan', 'kufile', 'rar'], url):
             # http://www.xingyaopan.com/fs/tuqlqxxnyzggaag
             # http://www.kufile.net/file/QUExNTM5NDg1.html
             # http://www.rarclouds.com/file/QUExNTE5Mjgz.html
