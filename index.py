@@ -73,8 +73,8 @@ async def jiexi(url):
     }
     try:
         rep = s.post(f'{pan_domain}/doOrder4Card', data=data)
-    except requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout:
-        print('下载链接解析失败')
+    except Exception as e:
+        print('下载链接解析失败', e.__class__.__name__)
         return None
     if 'toCaptcha' in rep.url:
         print('遭遇到机器验证')
