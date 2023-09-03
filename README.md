@@ -71,4 +71,10 @@ pip3 install packages/requests-2.28.1-py3-none-any.whl
 
 ## Star历史
 
-![Star History Chart](https://api.star-history.com/svg?repos=holll/wzjx&type=Date)
+<a href="https://github.com/holll/wzjx/stargazers">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=holll/wzjx&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=holll/wzjx&type=Date" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=holll/wzjx&type=Date" />
+  </picture>
+</a>
