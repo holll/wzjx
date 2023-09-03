@@ -181,8 +181,6 @@ def download(url, referer, name, is_xc: str):
             if platform.system() == 'Windows':
                 pyperclip.copy(f'XC://{xc_ma}')
                 print('已将续传码复制到剪贴板', flush=True)
-            else:
-                print(f'XC://{xc_ma}', flush=True)
 
     if is_xc != '':
         xc_ma = is_xc.replace('XC://', '')
