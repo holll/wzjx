@@ -219,18 +219,22 @@ async def get_name(url):
             # 针对301或302跳转
             url = rep.url
         return name, url
-    rep = s.get(url)
-    # 针对301或302跳转
-    url = rep.url
-    # 针对200状态码的跳转
-    soup = BeautifulSoup(rep.text, 'html.parser')
-    if soup.find('meta').get('http-equiv') == 'refresh':
-        # META http-equiv="refresh" 实现网页自动跳转
-        url = re.search(r'[a-zA-z]+://\S*', soup.find('meta').get('content')).group()
+
+    rep = requests.models.Response
+    # 白名单模式
+    if not is_in_list(['rosefile', 'koalaclouds', 'feimaoyun', 'expfile'], url):
         rep = s.get(url)
-    if rep.status_code != 200:
-        print('网盘访问失败，可以关闭自动解析文件名再次尝试', flush=True)
-        return name, url
+        # 针对301或302跳转
+        url = rep.url
+        # 针对200状态码的跳转
+        soup = BeautifulSoup(rep.text, 'html.parser')
+        if soup.find('meta').get('http-equiv') == 'refresh':
+            # META http-equiv="refresh" 实现网页自动跳转
+            url = re.search(r'[a-zA-z]+://\S*', soup.find('meta').get('content')).group()
+            rep = s.get(url)
+        if rep.status_code != 200:
+            print('网盘访问失败，可以关闭自动解析文件名再次尝试', flush=True)
+            return name, url
     try:
         if is_in_list(['rosefile', 'koalaclouds'], url):
             # https://rosefile.net/pm98zjeu2b/xa754.rar.html
@@ -253,47 +257,32 @@ async def get_name(url):
             # https://ownfile.net/files/T09mMzQ5ODUx.html
             # http://www.feiyupan.com/file-1400.html
             # http://www.xunniupan.com/file-2475170.html
-            if rep.status_code == 200:
-                soup = BeautifulSoup(rep.text, 'html.parser')
-                name = soup.find('div', {'class': 'row-fluid'}).div.h1.text
-            else:
-                name = input(f'解析失败，请手动填写文件名({url})')
+            soup = BeautifulSoup(rep.text, 'html.parser')
+            name = soup.find('div', {'class': 'row-fluid'}).div.h1.text
         elif 'dufile' in url:
             # https://dufile.com/file/0c7184f05ecdce0f.html
-            if rep.status_code == 200:
-                soup = BeautifulSoup(rep.text, 'html.parser')
-                name = soup.find('h2', {'class': 'title'}).text.split('  ')[-1]
-            else:
-                name = input(f'解析失败，请手动填写文件名({url})')
+            soup = BeautifulSoup(rep.text, 'html.parser')
+            name = soup.find('h2', {'class': 'title'}).text.split('  ')[-1]
         elif is_in_list(['xingyao', 'xywpan', 'kufile', 'rar'], url):
             # http://www.xingyaopan.com/fs/tuqlqxxnyzggaag
             # http://www.kufile.net/file/QUExNTM5NDg1.html
             # http://www.rarclouds.com/file/QUExNTE5Mjgz.html
-            if rep.status_code == 200:
-                soup = BeautifulSoup(rep.text, 'html.parser')
-                name = soup.find('title').text.split(' - ')[0]
-                file_type = soup.find('img', {'align': 'absbottom'})['src'].split('/')[-1].split('.')[0]
-                name = f'{name}.{file_type}'
-            else:
-                name = input(f'解析失败，请手动填写文件名({url})')
+            soup = BeautifulSoup(rep.text, 'html.parser')
+            name = soup.find('title').text.split(' - ')[0]
+            file_type = soup.find('img', {'align': 'absbottom'})['src'].split('/')[-1].split('.')[0]
+            name = f'{name}.{file_type}'
         elif 'dudujb' in url:
             # https://www.dudujb.com/file-1105754.html
-            if rep.status_code == 200:
-                soup = BeautifulSoup(rep.text, 'html.parser')
-                soup = soup.findAll('input', {'class': 'txtgray'})[-1]['value']
-                name = BeautifulSoup(soup, 'html.parser').text
-            else:
-                name = input(f'解析失败，请手动填写文件名({url})')
+            soup = BeautifulSoup(rep.text, 'html.parser')
+            soup = soup.findAll('input', {'class': 'txtgray'})[-1]['value']
+            name = BeautifulSoup(soup, 'html.parser').text
         elif is_in_list(['xfpan', 'skyfileos'], url):
             # http://www.xfpan.cc/file/QUExMzE4MDUx.html
             # https://www.skyfileos.com/90ea219698c62ea5
+            rep = s.get(url.replace(r'/file/', r'/down/'), headers={'Referer': url})
             if rep.status_code == 200:
-                rep = s.get(url.replace(r'/file/', r'/down/'), headers={'Referer': url})
-                if rep.status_code == 200:
-                    soup = BeautifulSoup(rep.text, 'html.parser')
-                    name = soup.find('title').text.split(' - ')[0]
-                else:
-                    name = input(f'解析失败，请手动填写文件名({url})')
+                soup = BeautifulSoup(rep.text, 'html.parser')
+                name = soup.find('title').text.split(' - ')[0]
             else:
                 name = input(f'解析失败，请手动填写文件名({url})')
         elif 'expfile' in url:
@@ -308,11 +297,8 @@ async def get_name(url):
                 name = input(f'解析失败，请手动填写文件名({url})')
         elif 'baigepan' in url:
             # https://www.baigepan.com/s/iU36ven9Wu
-            if rep.status_code == 200:
-                soup = BeautifulSoup(rep.text, 'html.parser')
-                name = soup.find('title').text.split(' - ')[0]
-            else:
-                name = input(f'解析失败，请手动填写文件名({url})')
+            soup = BeautifulSoup(rep.text, 'html.parser')
+            name = soup.find('title').text.split(' - ')[0]
         else:
             name = input(f'暂不支持该网盘自动解析文件名，请手动填写({url})')
         print(f'获取文件名{name}成功', flush=True)
