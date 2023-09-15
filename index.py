@@ -297,6 +297,9 @@ async def get_name(url):
             # https://www.baigepan.com/s/iU36ven9Wu
             soup = BeautifulSoup(rep.text, 'html.parser')
             name = soup.find('title').text.split(' - ')[0]
+        elif 'iycdn' in url:
+            soup = BeautifulSoup(rep.text, 'html.parser')
+            name = re.findall(r'>(.*?)<', soup.find('input', {'id': 'f_html'}).attrs['value'])[0]
         else:
             name = input(f'暂不支持该网盘自动解析文件名，请手动填写({url})')
         print(f'获取文件名{name}成功', flush=True)
