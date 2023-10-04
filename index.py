@@ -10,47 +10,21 @@ import sys
 import time
 
 import pyperclip
-import requests
-import urllib3
 from bs4 import BeautifulSoup
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
-urllib3.util.timeout.Timeout._validate_timeout = lambda *args: 10 if args[2] != 'total' else None
+import tools.tool
+from tools import const,get_name
+
 if platform.system() == 'Windows':
     import toIdm
 
 config_path = './config.json'
-retries = Retry(total=3, backoff_factor=0.1)
-main_domain = [
-    'rosefile',
-    'feimaoyun',
-    'xueqiupan',
-    '567file',
-    'ownfile',
-    'feiyupan',
-    # 'xunniupan',
-    'dufile',
-    'xingyaopan',
-    'kufile',
-    'rarclouds',
-    'dudujb',
-    'xfpan',
-    'skyfileos',
-    'expfile'
-]
-pan_domain = 'http://haoduopan.cn'
+
 
 
 def init():
-    global s, proxies
-    s = requests.session()
-    s.headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.0.0 Safari/537.36'
-    }
-    s.trust_env = False
-    s.mount('http://', HTTPAdapter(max_retries=retries))
-    s.mount('https://', HTTPAdapter(max_retries=retries))
+    global s,proxies
+    s = tools.tool.myRequests()
     with open(config_path, 'r', encoding='utf-8') as f:
         config = json.load(f)
     for key in config:
@@ -72,17 +46,17 @@ async def jiexi(url):
         'card': os.environ['card']
     }
     try:
-        rep = s.post(f'{pan_domain}/doOrder4Card', data=data)
+        rep = s.post(f'{const.pan_domain}/doOrder4Card', data=data)
     except Exception as e:
         print('下载链接解析失败', e.__class__.__name__)
         return None
     if 'toCaptcha' in rep.url:
         print('遭遇到机器验证')
         if platform.system() == 'Windows':
-            pyperclip.copy(f'{pan_domain}/toCaptcha/' + os.environ['card'])
+            pyperclip.copy(f'{const.pan_domain}/toCaptcha/' + os.environ['card'])
             print('已将验证网址复制到剪贴板，程序将在5秒后退出')
         else:
-            print(f'{pan_domain}/toCaptcha/' + os.environ['card'])
+            print(f'{const.pan_domain}/toCaptcha/' + os.environ['card'])
         time.sleep(5)
         exit(1)
     soup = BeautifulSoup(rep.text, 'html.parser')
@@ -199,115 +173,6 @@ def download(url, referer, name, is_xc: str):
         downl_aria2(url, referer, name)
 
 
-async def get_name(url):
-    def is_in_list(arr: list, value: str):
-        for web in arr:
-            if web in value:
-                return True
-        return False
-
-    name = None
-    if os.environ['auto_name'] == 'false':
-        domain = url.split('/')[2]
-        if not is_in_list(main_domain, domain):
-            rep = s.get(url)
-            if rep.status_code != 200:
-                print('网盘访问失败，可以关闭自动解析文件名再次尝试', flush=True)
-                return name
-            # 针对301或302跳转
-            url = rep.url
-        return name, url
-
-    rep = requests.models.Response
-    # 白名单模式
-    if not is_in_list(['rosefile', 'koalaclouds', 'feimaoyun', 'expfile'], url):
-        rep = s.get(url)
-        # 针对301或302跳转
-        url = rep.url
-        # 针对200状态码的跳转
-        soup = BeautifulSoup(rep.text, 'html.parser')
-        if soup.find('meta').get('http-equiv') == 'refresh':
-            # META http-equiv="refresh" 实现网页自动跳转
-            url = re.search(r'[a-zA-z]+://\S*', soup.find('meta').get('content')).group()
-            rep = s.get(url)
-        if rep.status_code != 200:
-            print('网盘访问失败，可以关闭自动解析文件名再次尝试', flush=True)
-            return name, url
-    try:
-        if is_in_list(['rosefile', 'koalaclouds'], url):
-            # https://rosefile.net/pm98zjeu2b/xa754.rar.html
-            # https://koalaclouds.com/971f6c37836c82fb/xm1901.part1.rar
-            if 'rosefile' in url:
-                name = url.split('/')[-1][:-5]
-            elif 'koalaclouds' in url:
-                name = url.split('/')[-1]
-        elif 'feimaoyun' in url:
-            # https://www.feimaoyun.com/s/398y7f0l
-            key = url.split('/')
-            rep = s.post('https://www.feimaoyun.com/index.php/down/new_detailv2', data={'code': key})
-            if rep.status_code == 200:
-                name = rep.json()['data']['file_name']
-            else:
-                name = input(f'解析失败，请手动填写文件名({url})')
-        elif is_in_list(['xueqiupan', '567file', 'ownfile', 'feiyupan', 'xunniu'], url):
-            # http://www.xueqiupan.com/file-531475.html
-            # https://www.567file.com/file-1387363.html
-            # https://ownfile.net/files/T09mMzQ5ODUx.html
-            # http://www.feiyupan.com/file-1400.html
-            # http://www.xunniupan.com/file-2475170.html
-            soup = BeautifulSoup(rep.text, 'html.parser')
-            name = soup.find('div', {'class': 'row-fluid'}).div.h1.text
-        elif 'dufile' in url:
-            # https://dufile.com/file/0c7184f05ecdce0f.html
-            soup = BeautifulSoup(rep.text, 'html.parser')
-            name = soup.find('h2', {'class': 'title'}).text.split('  ')[-1]
-        elif is_in_list(['xingyao', 'xywpan', 'kufile', 'rar'], url):
-            # http://www.xingyaopan.com/fs/tuqlqxxnyzggaag
-            # http://www.kufile.net/file/QUExNTM5NDg1.html
-            # http://www.rarclouds.com/file/QUExNTE5Mjgz.html
-            soup = BeautifulSoup(rep.text, 'html.parser')
-            name = soup.find('title').text.split(' - ')[0]
-            file_type = soup.find('img', {'align': 'absbottom'})['src'].split('/')[-1].split('.')[0]
-            name = f'{name}.{file_type}'
-        elif 'dudujb' in url:
-            # https://www.dudujb.com/file-1105754.html
-            soup = BeautifulSoup(rep.text, 'html.parser')
-            soup = soup.findAll('input', {'class': 'txtgray'})[-1]['value']
-            name = BeautifulSoup(soup, 'html.parser').text
-        elif is_in_list(['xfpan', 'skyfileos'], url):
-            # http://www.xfpan.cc/file/QUExMzE4MDUx.html
-            # https://www.skyfileos.com/90ea219698c62ea5
-            rep = s.get(url.replace(r'/file/', r'/down/'), headers={'Referer': url})
-            if rep.status_code == 200:
-                soup = BeautifulSoup(rep.text, 'html.parser')
-                name = soup.find('title').text.split(' - ')[0]
-            else:
-                name = input(f'解析失败，请手动填写文件名({url})')
-        elif 'expfile' in url:
-            # http://www.expfile.com/file-1464062.html
-            url = url.replace('file-', 'down2-')
-            rep = s.get(url)
-            if rep.status_code == 200:
-                soup = BeautifulSoup(rep.text, 'html.parser')
-                name = soup.find('title').text.split(' - ')[0]
-                name = name
-            else:
-                name = input(f'解析失败，请手动填写文件名({url})')
-        elif 'baigepan' in url:
-            # https://www.baigepan.com/s/iU36ven9Wu
-            soup = BeautifulSoup(rep.text, 'html.parser')
-            name = soup.find('title').text.split(' - ')[0]
-        elif 'iycdn' in url:
-            soup = BeautifulSoup(rep.text, 'html.parser')
-            name = re.findall(r'>(.*?)<', soup.find('input', {'id': 'f_html'}).attrs['value'])[0]
-        else:
-            name = input(f'暂不支持该网盘自动解析文件名，请手动填写({url})')
-        print(f'获取文件名{name}成功', flush=True)
-    except:
-        return None, url
-    return name, url
-
-
 async def main():
     init()
     while True:
@@ -315,7 +180,7 @@ async def main():
         if 'XC://' in url:
             download('', '', '', is_xc=url)
         else:
-            name, down_link = await asyncio.gather(get_name(url), jiexi(url))
+            name, down_link = await asyncio.gather(get_name.get_name(url), jiexi(url))
             if down_link is None:
                 continue
             download(down_link, name[1], name[0], is_xc='')
