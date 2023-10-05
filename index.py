@@ -191,4 +191,7 @@ if __name__ == '__main__':
         config_path = './config.json'
     else:
         config_path = args[1]
-    asyncio.run(main())
+    if sys.version_info < (3, 7):
+        asyncio.get_event_loop().run_until_complete(main())
+    else:
+        asyncio.run(main())
