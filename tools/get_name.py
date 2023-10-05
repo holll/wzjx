@@ -132,8 +132,7 @@ async def get_name(url):
         return input('文件名：'), url
 
     rep = requests.models.Response
-    # 白名单模式
-    # 白名单是直接从链接中就可以获取文件名的网站或者链接需要进行转换的网站
+    # 从链接中就可以获取文件名的网站、链接需要进行转换的网站
     if not tool.is_in_list(const.white_domain, url):
         rep = s.get(url)
         # 针对301或302跳转
@@ -166,7 +165,7 @@ async def get_name(url):
         elif 'expfile' in url:
             name = expfile(url)
         elif 'baigepan' in url:
-            name = baigepan(url)
+            name = baigepan(rep.text)
         elif 'iycdn' in url:
             name = iycdn(url)
         else:
