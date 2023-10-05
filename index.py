@@ -9,21 +9,20 @@ import re
 import sys
 import time
 
-import pyperclip
 from bs4 import BeautifulSoup
 
 import tools.tool
-from tools import const,get_name
+from tools import const, get_name
 
 if platform.system() == 'Windows':
     import toIdm
+    import pyperclip
 
 config_path = './config.json'
 
 
-
 def init():
-    global s,proxies
+    global s, proxies
     s = tools.tool.myRequests()
     with open(config_path, 'r', encoding='utf-8') as f:
         config = json.load(f)
