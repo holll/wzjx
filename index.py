@@ -88,30 +88,20 @@ async def jiexi(url):
         sys.stdout.flush()
         return
 
-    # 对rosefile特殊处理，down-node使用的是sharepoint，速度更快
-    # down_link = aria2_link[0]
-    down_link = random.choice(aria2_link)
-    # down-node偶尔会出现错误，增加重试机制
-    # 当程序第二次解析同一个链接时，禁用down-node节点
-    # if os.environ['rosefile'] is None:
-    #     try:
-    #         _ = os.environ[url]
-    #         isFirst = False
-    #     except KeyError:
-    #         isFirst = True
-    #     # isFirst = False
-    #     if 'rosefile' in url and isFirst:
-    #         for temp_url in aria2_link:
-    #             if 'down-node' in temp_url:
-    #                 down_link = temp_url
-    #                 # 赋值任意数据均可，目的是让环境变量不为空
-    #                 os.environ[url] = '1'
-    #                 break
-    # else:
-    #     for temp_url in aria2_link:
-    #         if 'down-node' not in temp_url:
-    #             down_link = temp_url
-    url_domain = re.search('(http|https)://(www.)?(\w+(\.)?)+', down_link).group()
+    # 重复解析
+    if os.environ.get('last_url') == url:
+        all_link = ''
+        i = 0
+        for link in aria2_link:
+            link_domain = re.search(const.domain_reg, link).group()
+            all_link += f'[{i}]:{link_domain}\n'
+            i += 1
+        print(all_link)
+        down_link = aria2_link[int(input('请输入序号选择下载服务器：'))]
+    else:
+        os.environ['last_url'] = url
+        down_link = random.choice(aria2_link)
+    url_domain = re.search(const.domain_reg, down_link).group()
     print(f'获取下载链接{url_domain}/...成功\n{end_time}，请记得及时续费', flush=True)
     return down_link
 
