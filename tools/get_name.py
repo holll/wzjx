@@ -126,6 +126,10 @@ def baigepan(rep_text: str):
     return soup.find('title').text.split(' - ')[0]
 
 
+def koolaayun(url):
+    return url.split('/')[-1]
+
+
 async def get_name(url):
     s = myRequests()
     if os.environ['auto_name'] == 'false':
@@ -168,6 +172,8 @@ async def get_name(url):
             name = baigepan(rep.text)
         elif 'iycdn' in url:
             name = iycdn(url)
+        elif 'koolaayun' in url:
+            name = koolaayun(url)
         else:
             name = input(f'暂不支持该网盘自动解析文件名，请手动填写({url}')
         print(f'获取文件名{name}成功', flush=True)
