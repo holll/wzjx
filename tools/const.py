@@ -1,6 +1,7 @@
 white_domain = [
     'rosefile',
     'koalaclouds',
+    'koolaayun',
     'feimaoyun',
     'expfile',
     'xfpan',
