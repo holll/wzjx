@@ -48,7 +48,7 @@ def rosefile(url: str):
     return url.split('/')[-1][:-5]
 
 
-def koalaclouds(url: str):
+def urlMod1(url: str):
     # eg.https://koalaclouds.com/971f6c37836c82fb/xm1901.part1.rar
     return url.split('/')[-1]
 
@@ -120,14 +120,11 @@ def expfile(url: str):
         return input(f'解析失败，请手动填写文件名({url})')
 
 
-def baigepan(rep_text: str):
+def titleMod1(rep_text: str):
     # eg.https://www.baigepan.com/s/iU36ven9Wu
+    # eg.https://www.jisuyp.com/s/a6fm2yePRo
     soup = BeautifulSoup(rep_text, 'html.parser')
     return soup.find('title').text.split(' - ')[0]
-
-
-def koolaayun(url):
-    return url.split('/')[-1]
 
 
 async def get_name(url):
@@ -152,8 +149,8 @@ async def get_name(url):
     try:
         if 'rosefile' in url:
             name = rosefile(url)
-        elif 'koalaclouds' in url:
-            name = koalaclouds(url)
+        elif tool.is_in_list(['koalaclouds', 'koolaayun'], url):
+            name = urlMod1(url)
         elif 'feimaoyun' in url:
             name = feimaoyun(url)
         elif tool.is_in_list(['xueqiupan', '567', 'ownfile', 'feiyupan', 'xunniu'], url.rsplit('/', maxsplit=1)[0]):
@@ -168,12 +165,10 @@ async def get_name(url):
             name = new_title(url)
         elif 'expfile' in url:
             name = expfile(url)
-        elif 'baigepan' in url:
-            name = baigepan(rep.text)
+        elif tool.is_in_list(['baigepan', 'jisuyp'], url):
+            name = titleMod1(rep.text)
         elif 'iycdn' in url:
             name = iycdn(url)
-        elif 'koolaayun' in url:
-            name = koolaayun(url)
         else:
             name = input(f'暂不支持该网盘自动解析文件名，请手动填写({url}')
         print(f'获取文件名{name}成功', flush=True)
