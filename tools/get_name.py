@@ -54,7 +54,6 @@ def urlMod1(url: str):
 
 
 def row_fluid(rep_text: str):
-    # eg.http://www.xueqiupan.com/file-531475.html
     # eg.https://www.567file.com/file-1387363.html
     # eg.https://ownfile.net/files/T09mMzQ5ODUx.html
     # eg.http://www.feiyupan.com/file-1400.html
@@ -136,7 +135,8 @@ async def get_name(url):
     # 从链接中就可以获取文件名的网站、链接需要进行转换的网站
     if not tool.is_in_list(const.white_domain, url):
         rep = s.get(url)
-        # 针对301或302跳转
+        if rep.status_code != 200 or rep.status_code != 301 or rep.status_code != 302:
+            return input('解析失败，请手动输入文件名：'), url
         url = rep.url
         # 针对200状态码的跳转
         soup = BeautifulSoup(rep.text, 'html.parser')
@@ -144,8 +144,7 @@ async def get_name(url):
             # META http-equiv="refresh" 实现网页自动跳转
             url = re.search(r'[a-zA-z]+://\S*', soup.find('meta').get('content')).group()
             rep = s.get(url)
-        if rep.status_code != 200:
-            return input('解析失败，请手动输入文件名：'), url
+
     try:
         if 'rosefile' in url:
             name = rosefile(url)
@@ -153,7 +152,7 @@ async def get_name(url):
             name = urlMod1(url)
         elif 'feimaoyun' in url:
             name = feimaoyun(url)
-        elif tool.is_in_list(['xueqiupan', '567', 'ownfile', 'feiyupan', 'xunniu'], url.rsplit('/', maxsplit=1)[0]):
+        elif tool.is_in_list(['567', 'ownfile', 'feiyupan', 'xunniu'], url.rsplit('/', maxsplit=1)[0]):
             name = row_fluid(rep.text)
         elif 'dufile' in url:
             name = dufile(rep.text)
