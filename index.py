@@ -19,19 +19,18 @@ if platform.system() == 'Windows':
     import pyperclip
 
 config_path = './config.json'
+s = tools.tool.myRequests()
 
 
 def init():
-    global s, proxies
-    s = tools.tool.myRequests()
+    global post_uri
     with open(config_path, 'r', encoding='utf-8') as f:
         config = json.load(f)
     for key in config:
         os.environ[key] = config[key]
-    proxies = {
-        'http': config.get('proxies'),
-        'https': config.get('proxies')
-    }
+    rep = s.get(const.pan_domain)
+    soup = BeautifulSoup(rep.text, 'html.parser')
+    post_uri = soup.find('form', {'id': 'diskForm'})['action']
     print(f'初始化配置完成，打印关键参数(自动获取文件名：{os.getenv("auto_name")})')
     print(f'卡密：{os.environ["card"]}\nRPC地址：{os.environ["aria2_rpc"]}')
     print(f'aria2_token：{config.get("aria2_token")}\n下载地址：{config.get("download_path")}')
@@ -45,7 +44,7 @@ async def jiexi(url):
         'card': os.environ['card']
     }
     try:
-        rep = s.post(f'{const.pan_domain}/doOrder4Card', data=data)
+        rep = s.post(f'{const.pan_domain}{post_uri}', data=data)
     except Exception as e:
         print('下载链接解析失败', e.__class__.__name__)
         return None
@@ -59,10 +58,14 @@ async def jiexi(url):
         time.sleep(5)
         exit(1)
     soup = BeautifulSoup(rep.text, 'html.parser')
-    if 'confirm' not in rep.url:
-        err_text = soup.find('div', {'class': 'col text-center'}).findAll('p')[-1].text
-        print(err_text)
-        return None
+    # 解析出现预期内的异常
+    error_html = soup.find('div', {'class': 'col text-center'})
+    if error_html is not None:
+        error_text = ''
+        for p in error_html.findAll('p'):
+            error_text += p.text.strip() + ' '
+        print(error_text.strip())
+        return
     try:
         scriptTags = soup.findAll('a', {'class': 'btn btn-info btn-sm'})
         end_time = soup.find('span', {'class': 'badge badge-pill badge-secondary'}).span.text
@@ -88,8 +91,7 @@ async def jiexi(url):
         sys.stdout.flush()
         return
 
-    # 重复解析
-    if os.environ.get('last_url') == url or not os.getenv('auto_select'):
+    if not os.getenv('auto_select'):
         all_link = ''
         all_domain = list()
         i = 0
@@ -105,7 +107,6 @@ async def jiexi(url):
         else:
             down_link = aria2_link[0]
     else:
-        os.environ['last_url'] = url
         down_link = random.choice(aria2_link)
     url_domain = re.search(const.domain_reg, down_link).group()
     print(f'获取下载链接{url_domain}...成功\n{end_time}，请记得及时续费', flush=True)
@@ -127,13 +128,6 @@ def download(url, referer, name, is_xc: str):
                 [url],
                 {'dir': os.environ['download_path'], 'out': name, 'referer': referer}]
         })
-        '''
-        # 如果需要启用代理访问aria2RPC，取消注释本段代码
-        s_with_env = requests.session()
-        s_with_env.mount('http://', HTTPAdapter(max_retries=retries))
-        s_with_env.mount('https://', HTTPAdapter(max_retries=retries))
-        response = s_with_env.post(url=RPC_url, data=json_rpc)
-        '''
         try:
             response = s.post(url=RPC_url, data=json_rpc)
             if response.status_code == 200:
