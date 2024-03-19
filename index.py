@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import base64
 import hashlib
@@ -18,7 +19,14 @@ if platform.system() == 'Windows':
     import toIdm
     import pyperclip
 
-config_path = './config.json'
+# 1.创建解释器
+parser = argparse.ArgumentParser()
+# 2.添加需要的参数
+parser.add_argument('-c', '--config', default='config.json', help='配置文件')
+# 3.进行参数解析
+args = parser.parse_args()
+config_path = args.config
+
 s = tools.tool.myRequests()
 
 
