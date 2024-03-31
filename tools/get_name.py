@@ -122,6 +122,7 @@ def expfile(url: str):
 def titleMod1(rep_text: str):
     # eg.https://www.baigepan.com/s/iU36ven9Wu
     # eg.https://www.jisuyp.com/s/a6fm2yePRo
+    # eg.http://www.qqupload.com/3uj4i
     soup = BeautifulSoup(rep_text, 'html.parser')
     return soup.find('title').text.split(' - ')[0]
 
@@ -164,7 +165,7 @@ async def get_name(url):
             name = new_title(url)
         elif 'expfile' in url:
             name = expfile(url)
-        elif tool.is_in_list(['baigepan', 'jisuyp'], url):
+        elif tool.is_in_list(['baigepan', 'jisuyp', 'qqupload'], url):
             name = titleMod1(rep.text)
         elif 'iycdn' in url:
             name = iycdn(url)
