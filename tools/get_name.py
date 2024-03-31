@@ -136,7 +136,7 @@ async def get_name(url):
     # 从链接中就可以获取文件名的网站、链接需要进行转换的网站
     if not tool.is_in_list(const.white_domain, url):
         rep = s.get(url)
-        if rep.status_code != 200 or rep.status_code != 301 or rep.status_code != 302:
+        if rep.status_code != 200 and rep.status_code != 301 and rep.status_code != 302:
             return input('解析失败，请手动输入文件名：'), url
         url = rep.url
         # 针对200状态码的跳转
