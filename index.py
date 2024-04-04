@@ -91,7 +91,7 @@ async def main():
                 continue
             down_link = tool.select_link(return_data['links'])
             url_domain = re.search(const.domain_reg, down_link).group()
-            print(f'获取下载链接{url_domain}...成功\n{return_data["end_time"]}，请记得及时续费', flush=True)
+            print(f'获取下载链接{url_domain}...成功\n{return_data.get("end_time")}，请记得及时续费', flush=True)
             download(down_link, name[1], name[0], is_xc='')
 
 
