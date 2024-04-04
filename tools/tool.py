@@ -1,13 +1,24 @@
 import hashlib
 import os
+import platform
 import random
 import re
 from typing import Union
 
 import requests
 import urllib3
+from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
 
+try:
+    import redis
+
+    hasRedis = True
+    pool_db1 = redis.ConnectionPool(host='127.0.0.1', port=6379, db=2)
+    r_l = redis.Redis(connection_pool=pool_db1)
+except ModuleNotFoundError:
+    hasRedis = False
+    pass
 from tools import const
 
 urllib3.util.timeout.Timeout._validate_timeout = lambda *args: 10 if args[2] != 'total' else None
@@ -50,6 +61,9 @@ class myRequests:
         self.session.trust_env = False
         self.session.mount('http://', HTTPAdapter(max_retries=myRequests.retries))
         self.session.mount('https://', HTTPAdapter(max_retries=myRequests.retries))
+        rep = self.session.get(const.pan_domain)
+        soup = BeautifulSoup(rep.text, 'html.parser')
+        self.post_uri = soup.find('form', {'id': 'diskForm'})['action']
 
     def get(self, url: str, headers: Union[None, dict] = None, params=None) -> requests.models.Response:
         if headers is not None:
@@ -93,3 +107,75 @@ def select_link(links: list) -> str:
             return links[0]
     else:
         return random.choice(links)
+
+
+async def jiexi(s: requests.sessions, url: str) -> dict:
+    return_data = {'code': 200, 'links': [], 'msg': '','cache':'miss'}
+    if not url.endswith('#re') and hasRedis:
+        # 判断链接命中缓存
+        link_cache = r_l.lrange(url, 0, -1)
+        link_cache = [link.decode('utf-8') for link in link_cache]
+        if link_cache:
+            return_data['cache'] = 'hit'
+            return_data['links'] = link_cache
+            return return_data
+    else:
+        url = url.replace('#re', '')
+    data = {
+        'browser': '',
+        'url': url,
+        'card': os.environ['card']
+    }
+    try:
+        rep = s.post(f'{const.pan_domain}{s.post_uri}', data=data)
+    except Exception as e:
+        print('下载链接解析失败', e.__class__.__name__)
+        return_data['code'] = 500
+        return_data['msg'] = '下载链接解析失败'
+        return return_data
+    if 'toCaptcha' in rep.url:
+        print('遭遇到机器验证')
+        return_data['code'] = 403
+        return_data['msg'] = '遭遇到机器验证'
+        if platform.system() == 'Windows':
+            import pyperclip
+            pyperclip.copy(f'{const.pan_domain}/toCaptcha/' + os.environ['card'])
+            print('已将验证网址复制到剪贴板，程序将在5秒后退出')
+        else:
+            print(f'{const.pan_domain}/toCaptcha/' + os.environ['card'])
+        return return_data
+    soup = BeautifulSoup(rep.text, 'html.parser')
+    # 解析出现预期内的异常
+    error_html = soup.find('div', {'class': 'col text-center'})
+    if error_html is not None:
+        error_text = ''
+        for p in error_html.findAll('p'):
+            error_text += p.text.strip() + ' '
+        return_data['code'] = 400
+        return_data['msg'] = error_text.strip()
+        return return_data
+    try:
+        scriptTags = soup.findAll('a', {'class': 'btn btn-info btn-sm'})
+        end_time = soup.find('span', {'class': 'badge badge-pill badge-secondary'}).span.text
+        return_data['end_time'] = end_time
+    except Exception as e:
+        print('错误类型是', e.__class__.__name__)
+        print('错误明细是', e)
+        print(soup)
+        return_data['code'] = 500
+        return_data['msg'] = e.__class__.__name__
+        return return_data
+
+    # 存储下载地址
+    for script in scriptTags:
+        if script.has_attr('aria2-link'):
+            return_data['links'].append(script['aria2-link'])
+
+    if len(return_data['links']) == 0:
+        return_data['code'] = 400
+        return_data['msg'] = '未获取到下载地址'
+    else:
+        if hasRedis:
+            r_l.rpush(url, *return_data['links'])
+            r_l.expire(url, 7 * 24 * 60 * 60)
+    return return_data
