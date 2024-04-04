@@ -7,9 +7,7 @@ import platform
 import re
 import sys
 
-from bs4 import BeautifulSoup
-
-import tools.tool
+import tools.tool as tool
 from tools import const, get_name
 
 if platform.system() == 'Windows':
@@ -17,7 +15,7 @@ if platform.system() == 'Windows':
     import pyperclip
 
 config_path = './config.json'
-s = tools.tool.myRequests()
+s = tool.myRequests()
 
 
 def init():
@@ -25,69 +23,10 @@ def init():
         config = json.load(f)
     for key in config:
         os.environ[key] = config[key]
-    rep = s.get(const.pan_domain)
-    soup = BeautifulSoup(rep.text, 'html.parser')
-    s.post_uri = soup.find('form', {'id': 'diskForm'})['action']
     print(f'初始化配置完成，打印关键参数(自动获取文件名：{os.getenv("auto_name")})')
     print(f'卡密：{os.environ["card"]}\nRPC地址：{os.environ["aria2_rpc"]}')
     print(f'aria2_token：{config.get("aria2_token")}\n下载地址：{config.get("download_path")}')
     sys.stdout.flush()
-
-
-async def jiexi(url):
-    return_data = {'code': 0, 'links': [], 'msg': ''}
-    data = {
-        'browser': '',
-        'url': url,
-        'card': os.environ['card']
-    }
-    try:
-        rep = s.post(f'{const.pan_domain}{s.post_uri}', data=data)
-    except Exception as e:
-        print('下载链接解析失败', e.__class__.__name__)
-        return_data['code'] = 1
-        return_data['msg'] = '下载链接解析失败'
-        return return_data
-    if 'toCaptcha' in rep.url:
-        print('遭遇到机器验证')
-        return_data['code'] = 1
-        return_data['msg'] = '遭遇到机器验证'
-        if platform.system() == 'Windows':
-            pyperclip.copy(f'{const.pan_domain}/toCaptcha/' + os.environ['card'])
-            print('已将验证网址复制到剪贴板，程序将在5秒后退出')
-        else:
-            print(f'{const.pan_domain}/toCaptcha/' + os.environ['card'])
-        return return_data
-    soup = BeautifulSoup(rep.text, 'html.parser')
-    # 解析出现预期内的异常
-    error_html = soup.find('div', {'class': 'col text-center'})
-    if error_html is not None:
-        error_text = ''
-        for p in error_html.findAll('p'):
-            error_text += p.text.strip() + ' '
-        return_data['code'] = 1
-        return_data['msg'] = error_text.strip()
-        return return_data
-    try:
-        scriptTags = soup.findAll('a', {'class': 'btn btn-info btn-sm'})
-        end_time = soup.find('span', {'class': 'badge badge-pill badge-secondary'}).span.text
-        return_data['end_time'] = end_time
-    except Exception as e:
-        print('错误类型是', e.__class__.__name__)
-        print('错误明细是', e)
-        print(soup)
-        return_data['code'] = 1
-        return_data['msg'] = e.__class__.__name__
-        return return_data
-
-    # 存储下载地址
-    aria2_link = list()
-    for script in scriptTags:
-        if script.has_attr('aria2-link'):
-            aria2_link.append(script['aria2-link'])
-
-    return_data['links'] = aria2_link
-    return return_data
 
 
 def download(url, referer, name, is_xc: str):
@@ -146,11 +85,11 @@ async def main():
         if 'XC://' in url:
             download('', '', '', is_xc=url)
         else:
-            name, return_data = await asyncio.gather(get_name.get_name(url), jiexi(url))
-            if return_data['code'] != 0:
+            name, return_data = await asyncio.gather(get_name.get_name(url), tool.jiexi(s, url))
+            if return_data['code'] != 200:
                 print(return_data['msg'])
                 continue
-            down_link = tools.tool.select_link(return_data['links'])
+            down_link = tool.select_link(return_data['links'])
             url_domain = re.search(const.domain_reg, down_link).group()
             print(f'获取下载链接{url_domain}...成功\n{return_data["end_time"]}，请记得及时续费', flush=True)
             download(down_link, name[1], name[0], is_xc='')
