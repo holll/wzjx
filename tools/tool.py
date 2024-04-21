@@ -84,10 +84,10 @@ class myRequests:
 
 def select_link(links: list) -> str:
     if not os.getenv('auto_select'):
-        all_domains = set()
+        all_domains = list()
         for link in links:
             link_domain = re.search(const.domain_reg, link).group()
-            all_domains.add(link_domain)
+            all_domains.append(link_domain)
 
         if len(all_domains) > 1:
             print("可选的下载服务器：")
@@ -110,7 +110,7 @@ def select_link(links: list) -> str:
 
 
 async def jiexi(s: requests.sessions, url: str) -> dict:
-    return_data = {'code': 200, 'links': [], 'msg': '','cache':'miss'}
+    return_data = {'code': 200, 'links': [], 'msg': '', 'cache': 'miss'}
     if not url.endswith('#re') and hasRedis:
         # 判断链接命中缓存
         link_cache = r_l.lrange(url, 0, -1)
