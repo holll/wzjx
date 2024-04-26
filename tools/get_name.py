@@ -58,6 +58,7 @@ def row_fluid(rep_text: str):
     # eg.https://ownfile.net/files/T09mMzQ5ODUx.html
     # eg.http://www.feiyupan.com/file-1400.html
     # eg.http://www.xunniupan.com/file-2475170.html
+    # eg.http://www.shanxingyy.com/file-285.html
     soup = BeautifulSoup(rep_text, 'html.parser')
     return soup.find('div', {'class': 'row-fluid'}).div.h1.text
 
@@ -153,7 +154,7 @@ async def get_name(url):
             name = urlMod1(url)
         elif 'feimaoyun' in url:
             name = feimaoyun(url)
-        elif tool.is_in_list(['567', 'ownfile', 'feiyupan', 'xunniu'], url.rsplit('/', maxsplit=1)[0]):
+        elif tool.is_in_list(['567', 'ownfile', 'feiyupan', 'xunniu', 'shanxing'], url.rsplit('/', maxsplit=1)[0]):
             name = row_fluid(rep.text)
         elif 'dufile' in url:
             name = dufile(rep.text)
