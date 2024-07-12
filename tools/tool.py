@@ -18,7 +18,18 @@ try:
     r_l = redis.Redis(connection_pool=pool_db1)
 except ModuleNotFoundError:
     hasRedis = False
-from tools import const
+
+white_domain = [
+    'rosefile',
+    'koalaclouds',
+    'koolaayun',
+    'feimaoyun',
+    'expfile',
+    'xfpan',
+    'skyfileos'
+]
+pan_domain = 'http://haoduopan.cn'
+domain_reg = '(http|https)://.+?/'
 
 urllib3.util.timeout.Timeout._validate_timeout = lambda *args: 10 if args[2] != 'total' else None
 
@@ -60,7 +71,7 @@ class myRequests:
         self.session.trust_env = False
         self.session.mount('http://', HTTPAdapter(max_retries=myRequests.retries))
         self.session.mount('https://', HTTPAdapter(max_retries=myRequests.retries))
-        rep = self.session.get(const.pan_domain)
+        rep = self.session.get(pan_domain)
         soup = BeautifulSoup(rep.text, 'html.parser')
         self.post_uri = soup.find('form', {'id': 'diskForm'})['action']
 
@@ -85,7 +96,7 @@ def select_link(links: list) -> str:
     if not os.getenv('auto_select'):
         all_domains = list()
         for link in links:
-            link_domain = re.search(const.domain_reg, link).group()
+            link_domain = re.search(domain_reg, link).group()
             all_domains.append(link_domain)
 
         if len(all_domains) > 1:
@@ -126,7 +137,7 @@ async def jiexi(s: requests.sessions, url: str) -> dict:
         'card': os.environ['card']
     }
     try:
-        rep = s.post(f'{const.pan_domain}{s.post_uri}', data=data)
+        rep = s.post(f'{pan_domain}{s.post_uri}', data=data)
     except Exception as e:
         print('下载链接解析失败', e.__class__.__name__)
         return_data['code'] = 500
@@ -138,10 +149,10 @@ async def jiexi(s: requests.sessions, url: str) -> dict:
         return_data['msg'] = '遭遇到机器验证'
         if platform.system() == 'Windows':
             import pyperclip
-            pyperclip.copy(f'{const.pan_domain}/toCaptcha/' + os.environ['card'])
+            pyperclip.copy(f'{pan_domain}/toCaptcha/' + os.environ['card'])
             print('已将验证网址复制到剪贴板，程序将在5秒后退出')
         else:
-            print(f'{const.pan_domain}/toCaptcha/' + os.environ['card'])
+            print(f'{pan_domain}/toCaptcha/' + os.environ['card'])
         return return_data
     soup = BeautifulSoup(rep.text, 'html.parser')
     # 解析出现预期内的异常
