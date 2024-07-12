@@ -18,7 +18,6 @@ try:
     r_l = redis.Redis(connection_pool=pool_db1)
 except ModuleNotFoundError:
     hasRedis = False
-    pass
 from tools import const
 
 urllib3.util.timeout.Timeout._validate_timeout = lambda *args: 10 if args[2] != 'total' else None
@@ -110,7 +109,7 @@ def select_link(links: list) -> str:
 
 
 async def jiexi(s: requests.sessions, url: str) -> dict:
-    return_data = {'code': 200, 'links': [], 'msg': '', 'cache': 'miss'}
+    return_data = {'code': 200, 'raw_url': url, 'links': [], 'msg': '', 'cache': 'miss'}
     if not url.endswith('#re') and hasRedis:
         # 判断链接命中缓存
         link_cache = r_l.lrange(url, 0, -1)
@@ -176,6 +175,6 @@ async def jiexi(s: requests.sessions, url: str) -> dict:
         return_data['msg'] = '未获取到下载地址'
     else:
         if hasRedis:
-            r_l.rpush(url, *return_data['links'])
-            r_l.expire(url, 7 * 24 * 60 * 60)
+            await r_l.rpush(url, *return_data['links'])
+            await r_l.expire(url, 1 * 1 * 60 * 60)
     return return_data
