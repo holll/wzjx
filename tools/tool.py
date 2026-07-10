@@ -16,11 +16,9 @@ try:
     hasRedis = True
     pool_db1 = redis.ConnectionPool(host='127.0.0.1', port=6379, db=2)
     r_l = redis.Redis(connection_pool=pool_db1)
-except ModuleNotFoundError:
+except Exception:
     hasRedis = False
 from tools import const
-
-urllib3.util.timeout.Timeout._validate_timeout = lambda *args: 10 if args[2] != 'total' else None
 
 
 def string_to_hex(ac_str):
@@ -31,8 +29,8 @@ def string_to_hex(ac_str):
     return hex_val
 
 
-# 使用MD5加密
 def md5_encode(word):
+    """使用MD5加密"""
     md5_hash = hashlib.md5(word.encode()).hexdigest()
     return md5_hash
 
@@ -44,40 +42,59 @@ def is_in_list(arr: list, value: str):
     return False
 
 
-class myRequests:
+class MyRequests:
     retries = urllib3.util.retry.Retry(total=3, backoff_factor=0.1)
-    session = requests.session()
     user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36'
-    post_uri = ''
 
     def __init__(self, headers: Union[None, dict] = None):
+        # 每个实例独立的 session（修复原类变量共享 session 的隐患）
+        self.session = requests.session()
         self.session.headers = {
-            'user-agent': myRequests.user_agent,
+            'user-agent': MyRequests.user_agent,
         }
         if headers is not None:
             for k, v in headers:
                 self.session.headers[k] = v
         self.session.trust_env = False
-        self.session.mount('http://', HTTPAdapter(max_retries=myRequests.retries))
-        self.session.mount('https://', HTTPAdapter(max_retries=myRequests.retries))
-        rep = self.session.get(const.pan_domain)
-        soup = BeautifulSoup(rep.text, 'html.parser')
-        self.post_uri = soup.find('form', {'id': 'diskForm'})['action']
+        self.session.mount('http://', HTTPAdapter(max_retries=MyRequests.retries))
+        self.session.mount('https://', HTTPAdapter(max_retries=MyRequests.retries))
+        # 懒加载：延迟到首次使用时获取解析接口地址
+        self._post_uri = None
+
+    def _ensure_post_uri(self):
+        """懒加载：首次调用时获取解析接口地址，避免构造函数中阻塞网络请求"""
+        if self._post_uri is None:
+            try:
+                rep = self.session.get(const.pan_domain)
+                soup = BeautifulSoup(rep.text, 'html.parser')
+                self._post_uri = soup.find('form', {'id': 'diskForm'})['action']
+            except Exception as e:
+                print(f'获取解析接口地址失败: {e.__class__.__name__}')
+                raise
+
+    @property
+    def post_uri(self):
+        self._ensure_post_uri()
+        return self._post_uri
+
+    def _merge_headers(self, extra_headers):
+        """合并 session headers 和额外 headers，使用副本避免引用污染"""
+        merged = dict(self.session.headers)
+        if isinstance(extra_headers, dict):
+            merged.update(extra_headers)
+        else:
+            for k, v in extra_headers:
+                merged[k] = v
+        return merged
 
     def get(self, url: str, headers: Union[None, dict] = None, params=None) -> requests.models.Response:
         if headers is not None:
-            copy_headers = self.session.headers
-            for k, v in headers:
-                copy_headers[k] = v
-            return self.session.get(url, headers=copy_headers, params=params)
+            return self.session.get(url, headers=self._merge_headers(headers), params=params)
         return self.session.get(url, params=params)
 
     def post(self, url: str, headers: Union[None, dict] = None, data=None) -> requests.models.Response:
         if headers is not None:
-            copy_headers = self.session.headers
-            for k, v in headers:
-                copy_headers[k] = v
-            return self.session.post(url, headers=copy_headers, data=data)
+            return self.session.post(url, headers=self._merge_headers(headers), data=data)
         return self.session.post(url, data=data)
 
 
@@ -108,10 +125,10 @@ def select_link(links: list) -> str:
         return random.choice(links)
 
 
-async def jiexi(s: requests.sessions, url: str) -> dict:
+async def jiexi(s: MyRequests, url: str) -> dict:
+    """解析网赚盘链接，获取真实下载地址"""
     return_data = {'code': 200, 'raw_url': url, 'links': [], 'msg': '', 'cache': 'miss'}
     if not url.endswith('#re') and hasRedis:
-        # 判断链接命中缓存
         link_cache = r_l.lrange(url, 0, -1)
         link_cache = [link.decode('utf-8') for link in link_cache]
         if link_cache:
@@ -144,7 +161,6 @@ async def jiexi(s: requests.sessions, url: str) -> dict:
             print(f'{const.pan_domain}/toCaptcha/' + os.environ['card'])
         return return_data
     soup = BeautifulSoup(rep.text, 'html.parser')
-    # 解析出现预期内的异常
     error_html = soup.find('div', {'class': 'col text-center'})
     if error_html is not None:
         error_text = ''
@@ -165,7 +181,6 @@ async def jiexi(s: requests.sessions, url: str) -> dict:
         return_data['msg'] = e.__class__.__name__
         return return_data
 
-    # 存储下载地址
     for script in scriptTags:
         if script.has_attr('aria2-link'):
             return_data['links'].append(script['aria2-link'])
@@ -175,6 +190,7 @@ async def jiexi(s: requests.sessions, url: str) -> dict:
         return_data['msg'] = '未获取到下载地址'
     else:
         if hasRedis:
-            await r_l.rpush(url, *return_data['links'])
-            await r_l.expire(url, 1 * 1 * 60 * 60)
+            # 同步 redis 库，不使用 await（原代码的 await 会导致 TypeError）
+            r_l.rpush(url, *return_data['links'])
+            r_l.expire(url, 3600)
     return return_data

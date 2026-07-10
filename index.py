@@ -15,7 +15,7 @@ if platform.system() == 'Windows':
     import pyperclip
 
 config_path = './config.json'
-s = tool.myRequests()
+s = tool.MyRequests()
 
 
 def init():
@@ -23,9 +23,9 @@ def init():
         config = json.load(f)
     for key in config:
         os.environ[key] = config[key]
-    print(f'初始化配置完成，打印关键参数(自动获取文件名：{os.getenv("auto_name")})')
-    print(f'卡密：{os.environ["card"]}\nRPC地址：{os.environ["aria2_rpc"]}')
-    print(f'aria2_token：{config.get("aria2_token")}\n下载地址：{config.get("download_path")}')
+    print(f'初始化配置完成(自动获取文件名：{os.getenv("auto_name")})')
+    print(f'RPC地址：{os.environ["aria2_rpc"]}')
+    print(f'下载路径：{config.get("download_path")}')
     sys.stdout.flush()
 
 
@@ -78,6 +78,40 @@ def download(url, referer, name, is_xc: str):
         downl_aria2(url, referer, name)
 
 
+def run_server():
+    """启动 API 服务器模式：python index.py -server [config_path]"""
+    try:
+        from flask import Flask, request, jsonify
+    except ImportError:
+        print('Flask 未安装，请执行: pip install flask')
+        sys.exit(1)
+
+    init()
+    _client = tool.MyRequests()
+
+    app = Flask(__name__)
+
+    @app.route('/api/parse', methods=['POST'])
+    def parse():
+        data = request.get_json(silent=True)
+        if not data or 'url' not in data:
+            return jsonify({'code': 400, 'msg': '缺少 url 参数'}), 400
+        try:
+            result = asyncio.run(tool.jiexi(_client, data['url']))
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({'code': 500, 'msg': str(e)}), 500
+
+    @app.route('/api/health', methods=['GET'])
+    def health():
+        return jsonify({'status': 'ok'})
+
+    host = os.environ.get('API_HOST', '127.0.0.1')
+    port = int(os.environ.get('API_PORT', 5000))
+    print(f'API 服务启动: http://{host}:{port}')
+    app.run(host=host, port=port)
+
+
 async def main():
     init()
     while True:
@@ -97,11 +131,16 @@ async def main():
 
 if __name__ == '__main__':
     args = sys.argv
-    if len(args) == 1:
-        config_path = './config.json'
+    if len(args) >= 2 and args[1] == '-server':
+        if len(args) >= 3:
+            config_path = args[2]
+        run_server()
     else:
-        config_path = args[1]
-    if sys.version_info < (3, 7):
-        asyncio.get_event_loop().run_until_complete(main())
-    else:
-        asyncio.run(main())
+        if len(args) == 1:
+            config_path = './config.json'
+        else:
+            config_path = args[1]
+        if sys.version_info < (3, 7):
+            asyncio.get_event_loop().run_until_complete(main())
+        else:
+            asyncio.run(main())

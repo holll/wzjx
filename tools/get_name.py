@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup
 
 from tools import const
 from tools import tool
-from tools.tool import myRequests
+from tools.tool import MyRequests
 
 
 def iycdn(url) -> str:
@@ -66,7 +66,7 @@ def row_fluid(rep_text: str):
 def feimaoyun(url: str):
     # eg.https://www.feimaoyun.com/s/398y7f0l
     key = url.split('/')
-    s = myRequests()
+    s = MyRequests()
     rep = s.post('https://www.feimaoyun.com/index.php/down/new_detailv2', data={'code': key})
     if rep.status_code == 200:
         return rep.json()['data']['file_name']
@@ -77,7 +77,7 @@ def feimaoyun(url: str):
 def dufile(rep_text: str):
     # eg.https://dufile.com/file/0c7184f05ecdce0f.html
     soup = BeautifulSoup(rep_text, 'html.parser')
-    return soup.find('h2', {'class': 'title'}).text.split('  ')[-1]
+    return soup.find('h2', {'class': 'title'}).text.split('  ')[-1]
 
 
 def align_absbottom(rep_text: str):
@@ -100,7 +100,7 @@ def dudujb(rep_text: str):
 def new_title(url: str):
     # eg.http://www.xfpan.cc/file/QUExMzE4MDUx.html
     # eg.https://www.skyfileos.com/90ea219698c62ea5
-    s = myRequests()
+    s = MyRequests()
     rep = s.get(url.replace(r'/file/', r'/down/'), headers={'Referer': url})
     if rep.status_code == 200:
         soup = BeautifulSoup(rep.text, 'html.parser')
@@ -111,7 +111,7 @@ def new_title(url: str):
 
 def expfile(url: str):
     # eg.http://www.expfile.com/file-1464062.html
-    s = myRequests()
+    s = MyRequests()
     rep = s.get(url.replace('file-', 'down2-'))
     if rep.status_code == 200:
         soup = BeautifulSoup(rep.text, 'html.parser')
@@ -129,7 +129,7 @@ def titleMod1(rep_text: str):
 
 
 async def get_name(url):
-    s = myRequests()
+    s = MyRequests()
     if os.environ['auto_name'] == 'false':
         return input('文件名：'), url
 
@@ -173,6 +173,7 @@ async def get_name(url):
         else:
             name = input(f'暂不支持该网盘自动解析文件名，请手动填写({url}')
         print(f'获取文件名{name}成功', flush=True)
-    except:
+    except Exception as e:
+        print(f'获取文件名异常: {e.__class__.__name__}: {e}', flush=True)
         return None, url
     return name, url
