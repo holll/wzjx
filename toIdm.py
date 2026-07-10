@@ -1,3 +1,8 @@
+import platform
+
+if platform.system() != 'Windows':
+    raise RuntimeError('toIdm 模块仅在 Windows 平台可用（依赖 comtypes）')
+
 import comtypes.client as cc
 
 cc.GetModule(["{ECF21EAB-3AA8-4355-82BE-F777990001DD}", 1, 0])

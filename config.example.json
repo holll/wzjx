@@ -1,7 +1,10 @@
 {
   "card": "",
-  "auto_name": "",
+  "auto_name": "false",
+  "auto_select": "false",
+  "xc": "",
   "aria2_rpc": "",
   "aria2_token": "",
-  "download_path": ""
+  "download_path": "",
+  "proxies": ""
 }

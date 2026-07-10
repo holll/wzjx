@@ -1,5 +1,10 @@
 beautifulsoup4>=4.11.1
-comtypes>=1.1.14
-pyperclip>=1.8.2
 requests>=2.26.0
 urllib3>=1.26.7
+flask>=2.0.0
+
+# Windows 桌面端（index.py 命令行模式）额外依赖：
+# comtypes>=1.1.14
+# pyperclip>=1.8.2
+
+# redis 可选（tools/tool.py 中 try/except 保护）
