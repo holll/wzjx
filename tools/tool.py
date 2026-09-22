@@ -58,6 +58,42 @@ def b64url_decode(s: str) -> str:
 
 PAN_HOST = const.pan_domain.split('//')[-1].split('/')[0]
 
+# ---- 阿里云 WAF 挑战页(acw_sc__v2)----
+# 网站前置了阿里云 WAF。家庭/住宅 IP 通常直接放行，但机房出口 IP（如 netcup）会被
+# 判为风控，首页返回一个 JS 挑战页：正文只有一段混淆脚本，里面带
+#   var arg1='<40 位十六进制>'
+# 脚本把 arg1 按固定置换表重排、再与固定密钥按**字节**（每 2 个十六进制字符）XOR，
+# 得到 acw_sc__v2 写进 cookie 后重新请求。
+# 这个值是 arg1 的纯函数，不需要浏览器执行 JS，纯 Python 就能算出来（实测可稳定通过）。
+ACW_KEY = '3000176000856006061501533003690027800375'
+ACW_ORDER = [0xf, 0x23, 0x1d, 0x18, 0x21, 0x10, 0x1, 0x26, 0xa, 0x9, 0x13, 0x1f,
+             0x28, 0x1b, 0x16, 0x17, 0x19, 0xd, 0x6, 0xb, 0x27, 0x12, 0x14, 0x8,
+             0xe, 0x15, 0x20, 0x1a, 0x2, 0x1e, 0x7, 0x4, 0x11, 0x5, 0x3, 0x1c,
+             0x22, 0x25, 0xc, 0x24]
+WAF_ARG1_REG = re.compile(r"var\s+arg1\s*=\s*'([0-9A-Fa-f]+)'")
+
+
+def waf_arg1(html: str) -> str:
+    """命中 WAF 挑战页时返回其中的 arg1，否则返回空串"""
+    m = WAF_ARG1_REG.search(html or '')
+    return m.group(1) if m else ''
+
+
+def acw_sc_v2(arg1: str) -> str:
+    """由 arg1 算出 acw_sc__v2。
+
+    注意第二步是**按字节** XOR（每 2 个十六进制字符一组转成整数），
+    不是逐字符 XOR——写成逐字符也能跑出结果，但值完全不同、WAF 不认。
+    """
+    buf = [''] * len(ACW_ORDER)
+    for i, ch in enumerate(arg1):
+        for j, pos in enumerate(ACW_ORDER):
+            if pos == i + 1:
+                buf[j] = ch
+    un = ''.join(buf)
+    return ''.join(f'{int(un[i:i + 2], 16) ^ int(ACW_KEY[i:i + 2], 16):02x}'
+                   for i in range(0, min(len(un), len(ACW_KEY)), 2))
+
 
 def load_cookies(session: requests.Session, cookie_str: str) -> None:
     """把 "k=v; k2=v2" 形式的 cookie 串注入 session。
@@ -101,17 +137,26 @@ class MyRequests:
 
     def _ensure_post_uri(self):
         """懒加载：首次调用时获取解析接口地址，避免构造函数中阻塞网络请求"""
-        if self._post_uri is None:
-            try:
-                rep = self.session.get(const.pan_domain, timeout=20)
-                soup = BeautifulSoup(rep.text, 'html.parser')
-                form = soup.find('form', {'id': 'diskForm'})
-                if form is None or not form.get('action'):
-                    raise RuntimeError('首页未找到 diskForm，站点结构可能已变更')
-                self._post_uri = form['action']
-            except Exception as e:
-                print(f'获取解析接口地址失败: {e.__class__.__name__}: {e}')
-                raise
+        if self._post_uri is not None:
+            return
+        rep = None
+        soup = None
+        try:
+            rep = self.get(const.pan_domain)
+            soup = BeautifulSoup(rep.text, 'html.parser')
+            action = find_post_uri(soup, rep.text)
+            if not action:
+                raise RuntimeError('首页未找到解析接口 form/action')
+            self._post_uri = action
+        except Exception as e:
+            print(f'获取解析接口地址失败: {e.__class__.__name__}: {e}', flush=True)
+            if rep is not None:
+                # 首页这一层此前只打异常名，看不到服务器实际拿到的是什么页
+                print(f'  首页诊断: {_dump_page(rep, soup, "home_page.html")}', flush=True)
+                hint = waf_hint(rep.text)
+                if hint:
+                    print(f'  {hint}', flush=True)
+            raise
 
     @property
     def post_uri(self):
@@ -130,15 +175,54 @@ class MyRequests:
             merged.update(dict(extra_headers))
         return merged
 
-    def get(self, url: str, headers: Union[None, dict] = None, params=None) -> requests.models.Response:
+    def _send(self, method: str, url: str, headers=None, params=None, data=None,
+              timeout: int = 30) -> requests.models.Response:
+        """统一入口：撞上阿里云 WAF 挑战页时自动解出 cookie 并重放"""
+        kwargs = {'timeout': timeout}
         if headers is not None:
-            return self.session.get(url, headers=self._merge_headers(headers), params=params, timeout=30)
-        return self.session.get(url, params=params, timeout=30)
+            kwargs['headers'] = self._merge_headers(headers)
+        if params is not None:
+            kwargs['params'] = params
+        if data is not None:
+            kwargs['data'] = data
+        rep = self.session.request(method, url, **kwargs)
+        for _ in range(2):
+            arg1 = waf_arg1(rep.text)
+            if not arg1:
+                break
+            self.session.cookies.set('acw_sc__v2', acw_sc_v2(arg1), domain=PAN_HOST)
+            print('命中解析站 WAF 挑战页，已本地算出 acw_sc__v2 并重试', flush=True)
+            rep = self.session.request(method, url, **kwargs)
+        return rep
+
+    def get(self, url: str, headers: Union[None, dict] = None, params=None) -> requests.models.Response:
+        return self._send('GET', url, headers=headers, params=params, timeout=30)
 
     def post(self, url: str, headers: Union[None, dict] = None, data=None) -> requests.models.Response:
-        if headers is not None:
-            return self.session.post(url, headers=self._merge_headers(headers), data=data, timeout=60)
-        return self.session.post(url, data=data, timeout=60)
+        return self._send('POST', url, headers=headers, data=data, timeout=60)
+
+
+def tab_label_map(soup: BeautifulSoup) -> dict:
+    """tab-pane id -> 标签名。
+
+    站点用 Bootstrap tab 组织线路（尊享/专用/Gopeed/高速/Motrix/IDM/迅雷/迅雷新），
+    同一个转发路由会在多个 tab 里复用（如 /direct/download 同时出现在
+    主力线路与迅雷 tab），所以线路名只能按所在 tab 取，不能按路由判断。
+    """
+    labels = {}
+    for link in soup.find_all('a', {'class': 'nav-link'}):
+        href = (link.get('href') or '').strip()
+        if href.startswith('#'):
+            labels[href[1:]] = link.get_text(' ', strip=True)
+    return labels
+
+
+def _label_of(a, tab_labels: dict, route: str) -> str:
+    """下载按钮的线路名：优先取所在 tab 的标签，取不到再退回路由映射"""
+    pane = a.find_parent('div', class_='tab-pane')
+    if pane is not None and pane.get('id') in tab_labels:
+        return tab_labels[pane['id']]
+    return const.route_label.get(route, route)
 
 
 def parse_download_lines(soup: BeautifulSoup, buttons=None) -> Tuple[List[dict], List[str]]:
@@ -148,9 +232,8 @@ def parse_download_lines(soup: BeautifulSoup, buttons=None) -> Tuple[List[dict],
       lines 每项 {label, route, url, en, btn[, idm_cmd|thunder]}
       links 为**去重后的真实直链**，可直接交给 aria2 / IDM 使用。
 
-    站点有 7 个线路 tab（专用/高速/Motrix/IDM/迅雷/迅雷新/Gopeed），
-    但底层只有 2 个真实存储地址（阿里云 S3 + Cloudflare R2 备份），
-    16 个按钮转发的是同一批预签名直链，因此按直链去重。
+    站点有 8 个线路 tab，但底层只有少数几个真实存储地址（预签名直链），
+    各 tab 转发的是同一批直链，因此按直链去重。
     """
     lines: List[dict] = []
     links: List[str] = []
@@ -164,23 +247,23 @@ def parse_download_lines(soup: BeautifulSoup, buttons=None) -> Tuple[List[dict],
 
     if buttons is None:
         buttons = soup.find_all('a', {'class': const.download_btn_class})
+    tab_labels = tab_label_map(soup)
     for a in buttons:
         href = (a.get('href') or '').strip()
         btn = a.get_text(strip=True)
 
         # 1) 站点中转: /master/download?l=<b64>&en=<sig>  (含 /s3 /download /direct /toAria2)
         if href.startswith('/') or href.startswith('http'):
-            path = href if href.startswith('http') else href
-            m = re.search(r'[?&](?:l|link)=([^&]+)', path)
+            m = re.search(r'[?&](?:l|link)=([^&]+)', href)
             if not m:
                 continue
             try:
                 direct = b64url_decode(unquote(m.group(1)))
             except Exception:
                 continue
-            route = path.split('?')[0]
-            en_m = re.search(r'[?&]en=([^&]+)', path)
-            _add({'label': const.route_label.get(route, route), 'route': route,
+            route = href.split('?')[0]
+            en_m = re.search(r'[?&]en=([^&]+)', href)
+            _add({'label': _label_of(a, tab_labels, route), 'route': route,
                   'url': direct, 'en': en_m.group(1) if en_m else '', 'btn': btn}, direct)
 
         # 2) IDM: ef2://<base64(命令行)>  命令行内含直链/Referer/UA/-sign
@@ -192,7 +275,7 @@ def parse_download_lines(soup: BeautifulSoup, buttons=None) -> Tuple[List[dict],
             m = re.search(r'-u\s+"?([^"\s]+)', cmd)
             if not m:
                 continue
-            _add({'label': const.route_label['ef2://'], 'route': 'ef2://',
+            _add({'label': _label_of(a, tab_labels, 'ef2://'), 'route': 'ef2://',
                   'url': m.group(1), 'en': '', 'btn': btn, 'idm_cmd': cmd}, m.group(1))
 
         # 3) 迅雷新: ct://<base64(JSON)>  JSON 内含 link/name/key/referer
@@ -204,10 +287,55 @@ def parse_download_lines(soup: BeautifulSoup, buttons=None) -> Tuple[List[dict],
             direct = obj.get('link', '')
             if not direct:
                 continue
-            _add({'label': const.route_label['ct://'], 'route': 'ct://',
+            _add({'label': _label_of(a, tab_labels, 'ct://'), 'route': 'ct://',
                   'url': direct, 'en': '', 'btn': btn, 'thunder': obj}, direct)
 
     return lines, links
+
+
+def _dump_page(rep, soup, filename: str) -> str:
+    """把响应页落盘并返回诊断摘要（站点改版/异地访问排查用）。
+
+    日志里只有 HTTP 访问行、看不到失败原因，是因为失败信息此前只放进了响应体。
+    这里统一把 HTTP 状态/落点/标题/正文摘要打出来，页面存盘便于直接比对结构。
+    """
+    title = soup.title.get_text(strip=True) if (soup is not None and soup.title) else ''
+    body = ' '.join((soup.get_text(' ', strip=True) or '').split())[:200] if soup is not None else ''
+    try:
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(rep.text)
+        path = filename
+    except Exception as e:
+        path = f'(保存失败 {e.__class__.__name__}: {e})'
+    return (f'HTTP={rep.status_code} 落点={rep.url} 已保存至 {path}\n'
+            f'  标题: {title!r}\n  正文摘要: {body!r}')
+
+
+def find_post_uri(soup: BeautifulSoup, html: str) -> str:
+    """定位解析接口 action（首页 form#diskForm 的 action 每次渲染都不同）。
+
+    不同网络环境/渲染版本下首页结构会变，因此多路兜底：
+      1. form#diskForm 的 action（正常路径）
+      2. 任意带 action 的 form（站点改 form id 时仍可用）
+      3. 正文中直接出现的 /doOrder4Card/<数字>（action 被塞进 JS 变量时）
+    """
+    form = soup.find('form', {'id': 'diskForm'})
+    if form is not None and (form.get('action') or '').strip():
+        return form['action'].strip()
+    for form in soup.find_all('form'):
+        action = (form.get('action') or '').strip()
+        if action:
+            return action
+    m = re.search(r'/doOrder4Card/\d+', html)
+    return m.group() if m else ''
+
+
+def waf_hint(html: str) -> str:
+    """首页仍是 WAF 挑战页时给出兜底建议（正常情况 _send 已自动解过）"""
+    if waf_arg1(html):
+        return ('首页仍是阿里云 WAF 挑战页：自动解 acw_sc__v2 未通过，可在浏览器打开解析站，'
+                '把 acw_sc__v2 填进 config.json 的 cookies 后重试')
+    return ''
 
 
 def extract_error_text(soup: BeautifulSoup) -> str:
@@ -238,23 +366,9 @@ def _host_of(url: str) -> str:
 
 
 def dump_fail_page(rep, soup, return_data: dict) -> None:
-    """解析失败时落盘结果页并打印诊断信息（站点改版/异地访问排查用）。
-
-    日志里只有 HTTP 访问行、看不到失败原因，是因为失败信息此前只放进了响应体。
-    这里统一打印 code/msg/标题/落点/正文摘要，并把页面存成 result_page.html
-    （已在 .gitignore 中），便于直接比对站点结构。
-    """
-    title = soup.title.get_text(strip=True) if soup.title else ''
-    body = ' '.join((soup.get_text(' ', strip=True) or '').split())[:200]
-    path = 'result_page.html'
-    try:
-        with open(path, 'w', encoding='utf-8') as f:
-            f.write(rep.text)
-    except Exception as e:
-        path = f'(保存失败 {e.__class__.__name__}: {e})'
+    """解析失败时落盘结果页并打印诊断信息（站点改版/异地访问排查用）"""
     print(f'解析失败: code={return_data["code"]} msg={return_data["msg"]!r} '
-          f'HTTP={rep.status_code} 落点={rep.url} 页面已保存至 {path}\n'
-          f'  标题: {title!r}\n  正文摘要: {body!r}', flush=True)
+          f'{_dump_page(rep, soup, "result_page.html")}', flush=True)
 
 
 def select_link(links: list, lines: Optional[list] = None, auto_select: Optional[bool] = None) -> str:
@@ -302,10 +416,13 @@ async def jiexi(s: MyRequests, url: str) -> dict:
         if link_cache:
             return_data['cache'] = 'hit'
             return_data['links'] = link_cache
-            # 缓存命中时补回会员到期时间（原逻辑只缓存了直链，end_time 会丢失）
+            # 缓存命中时补回会员到期时间与线路明细（原逻辑只缓存直链，
+            # end_time 和 lines 会丢失，导致缓存命中的解析在选线路时没有线路名）
             meta = r_l.get(f'{url}#meta')
             if meta:
-                return_data['end_time'] = json.loads(meta).get('end_time', '')
+                meta = json.loads(meta)
+                return_data['end_time'] = meta.get('end_time', '')
+                return_data['lines'] = meta.get('lines', [])
             return return_data
     else:
         url = url.replace('#re', '')
@@ -393,5 +510,6 @@ async def jiexi(s: MyRequests, url: str) -> dict:
         # 同步 redis 库，不使用 await（原代码的 await 会导致 TypeError）
         r_l.rpush(url, *links)
         r_l.expire(url, 3600)
-        r_l.set(f'{url}#meta', json.dumps({'end_time': return_data.get('end_time', '')}), ex=3600)
+        r_l.set(f'{url}#meta',
+                json.dumps({'end_time': return_data.get('end_time', ''), 'lines': lines}), ex=3600)
     return return_data
