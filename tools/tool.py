@@ -210,9 +210,51 @@ def parse_download_lines(soup: BeautifulSoup, buttons=None) -> Tuple[List[dict],
     return lines, links
 
 
+def extract_error_text(soup: BeautifulSoup) -> str:
+    """从站点提示页提取文案。
+
+    层级形如 div.alert.alert-white.my_container > div.alert.alert-secondary > p...
+    按 const.error_msg_class_list 优先级取首个命中的容器，先拼 <p>；容器里没有 <p>
+    时退化为整块文本（避免像 "返回首页" 这类占位容器返回空串）。
+    """
+    for sel in const.error_msg_class_list:
+        node = soup.find('div', {'class': sel})
+        if node is None:
+            continue
+        # 标题也要带上（如"文件正在为您准备中"就在 h1 里，只取 <p> 会丢掉最关键的结论）
+        text = ' '.join(tag.get_text(' ', strip=True)
+                        for tag in node.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p']))
+        text = ' '.join(text.split())
+        if not text:
+            text = ' '.join((node.get_text(' ', strip=True) or '').split())
+        if text:
+            return text[:300]
+    return ''
+
+
 def _host_of(url: str) -> str:
     """安全取主机名，畸形直链不抛异常"""
     return urlparse(url).netloc or (url[:60] if url else '(空)')
+
+
+def dump_fail_page(rep, soup, return_data: dict) -> None:
+    """解析失败时落盘结果页并打印诊断信息（站点改版/异地访问排查用）。
+
+    日志里只有 HTTP 访问行、看不到失败原因，是因为失败信息此前只放进了响应体。
+    这里统一打印 code/msg/标题/落点/正文摘要，并把页面存成 result_page.html
+    （已在 .gitignore 中），便于直接比对站点结构。
+    """
+    title = soup.title.get_text(strip=True) if soup.title else ''
+    body = ' '.join((soup.get_text(' ', strip=True) or '').split())[:200]
+    path = 'result_page.html'
+    try:
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(rep.text)
+    except Exception as e:
+        path = f'(保存失败 {e.__class__.__name__}: {e})'
+    print(f'解析失败: code={return_data["code"]} msg={return_data["msg"]!r} '
+          f'HTTP={rep.status_code} 落点={rep.url} 页面已保存至 {path}\n'
+          f'  标题: {title!r}\n  正文摘要: {body!r}', flush=True)
 
 
 def select_link(links: list, lines: Optional[list] = None, auto_select: Optional[bool] = None) -> str:
@@ -309,18 +351,16 @@ async def jiexi(s: MyRequests, url: str) -> dict:
     soup = BeautifulSoup(rep.text, 'html.parser')
     download_btns = soup.find_all('a', {'class': const.download_btn_class})
 
-    # 错误页：容器 class 已由 col 改为 col-12（保留旧版兜底）。
-    # col-12 是 bootstrap 通用栅格类，正常结果页也可能出现同名容器，
-    # 因此仅在整页没有任何下载按钮时才认定为错误页。
-    error_html = None
+    # 提示/错误页：仅在整页没有任何下载按钮时才认定。
+    # （col-12 是 bootstrap 通用栅格类，正常结果页也可能存在同名容器，
+    #   旧版按 col-12 直接判定会把正常页误判成错误页）
     if not download_btns:
-        error_html = (soup.find('div', {'class': const.error_div_class})
-                      or soup.find('div', {'class': const.error_div_class_legacy}))
-    if error_html is not None:
-        error_text = ' '.join(p.text.strip() for p in error_html.find_all('p'))
-        return_data['code'] = 400
-        return_data['msg'] = error_text.strip()
-        return return_data
+        error_text = extract_error_text(soup)
+        if error_text:
+            return_data['code'] = 400
+            return_data['msg'] = error_text
+            dump_fail_page(rep, soup, return_data)
+            return return_data
 
     # 会员到期时间
     try:
@@ -348,6 +388,7 @@ async def jiexi(s: MyRequests, url: str) -> dict:
     if not links:
         return_data['code'] = 400
         return_data['msg'] = '未获取到下载地址'
+        dump_fail_page(rep, soup, return_data)
     elif hasRedis:
         # 同步 redis 库，不使用 await（原代码的 await 会导致 TypeError）
         r_l.rpush(url, *links)

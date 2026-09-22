@@ -6,6 +6,7 @@ import os
 import platform
 import re
 import sys
+import traceback
 
 import tools.tool as tool
 from tools import const, get_name
@@ -95,12 +96,21 @@ def run_server():
     def parse():
         data = request.get_json(silent=True)
         if not data or 'url' not in data:
+            print('[parse] 缺少 url 参数', flush=True)
             return jsonify({'code': 400, 'msg': '缺少 url 参数'}), 400
+        url = data['url']
         try:
-            result = asyncio.run(tool.jiexi(_client, data['url']))
-            return jsonify(result)
+            result = asyncio.run(tool.jiexi(_client, url))
         except Exception as e:
+            print(f'[parse] 解析异常 {e.__class__.__name__}: {e}', flush=True)
+            traceback.print_exc()
             return jsonify({'code': 500, 'msg': str(e)}), 500
+        # 失败信息此前只放在响应体里，日志只能看到 HTTP 200，排查无迹可寻
+        level = 'OK' if result.get('code') == 200 else 'FAIL'
+        print(f"[parse] {level} code={result.get('code')} cache={result.get('cache')} "
+              f"lines={len(result.get('lines') or [])} links={len(result.get('links') or [])} "
+              f"msg={result.get('msg') or '-'} url={url}", flush=True)
+        return jsonify(result)
 
     @app.route('/api/health', methods=['GET'])
     def health():
