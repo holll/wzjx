@@ -230,9 +230,9 @@ class MyRequests:
         return merged
 
     def _send(self, method: str, url: str, headers=None, params=None, data=None,
-              timeout: int = 30) -> requests.models.Response:
+              timeout: int = 30, allow_redirects: bool = True) -> requests.models.Response:
         """统一入口：撞上阿里云 WAF 挑战页时自动解出 cookie 并重放"""
-        kwargs = {'timeout': timeout}
+        kwargs = {'timeout': timeout, 'allow_redirects': allow_redirects}
         if headers is not None:
             kwargs['headers'] = self._merge_headers(headers)
         if params is not None:
@@ -252,8 +252,92 @@ class MyRequests:
     def get(self, url: str, headers: Union[None, dict] = None, params=None) -> requests.models.Response:
         return self._send('GET', url, headers=headers, params=params, timeout=30)
 
-    def post(self, url: str, headers: Union[None, dict] = None, data=None) -> requests.models.Response:
-        return self._send('POST', url, headers=headers, data=data, timeout=60)
+    def post(self, url: str, headers: Union[None, dict] = None, data=None,
+             allow_redirects: bool = True) -> requests.models.Response:
+        return self._send('POST', url, headers=headers, data=data, timeout=60,
+                          allow_redirects=allow_redirects)
+
+
+# ---- 机器验证（算术图片验证码）----
+# 站点在被风控时会把解析请求跳到 /toCaptcha/<card>，页面是一个算术图片验证码
+#   <img src="/toCaptchaImg/<card>"> + POST /doCaptcha {card, answer}
+# 实测要点（2026-09）：
+#   1. 验证是**卡密级**的，不是 session 级 —— 答对一次后，另起一个全新 session
+#      也能直接解析，所以不需要在同一次请求里做识别；
+#   2. 答错**没有惩罚**：返回 200 并重新渲染验证页，可以无限重试；
+#   3. 成功信号是 302 跳转 /，失败信号是 200 + captchaForm；
+#   4. 图片是 easy-captcha 风格的彩色算术题（130x48），ddddocr 直接识别约 80%，
+#      主要失败模式是 "+" 被吞掉（"5+1" 读成 "51"），所以额外做结构校验。
+# 站点自带的 mathcode.onnx 那类模型对本站无效（160x60 标准字体，域不匹配）。
+CAPTCHA_MAX_TRY = 4
+_captcha_ocr = None
+
+
+def ocr_captcha(img_bytes: bytes) -> str:
+    """识别算术验证码，返回答案；识别不出返回 ''。
+
+    没装 ddddocr 就返回 ''（此时调用方退回人工验证的提示，不影响原有行为）。
+    """
+    global _captcha_ocr
+    try:
+        if _captcha_ocr is None:
+            from ddddocr import DdddOcr      # 可选依赖，懒加载
+            _captcha_ocr = DdddOcr(show_ad=False)
+        raw = _captcha_ocr.classification(img_bytes) or ''
+    except ImportError:
+        return ''
+    except Exception as e:
+        print(f'验证码识别异常: {e.__class__.__name__}: {e}', flush=True)
+        return ''
+
+    # 结构校验：本站固定是"单个数字 + 单个运算符 + 单个数字"，
+    # 用单字符正则，避免把尾部 "=?" 误读出的数字并进操作数
+    m = re.search(r'(\d)\s*([+\-*/×÷xX])\s*(\d)', raw)
+    if not m:
+        return ''
+    a, op, b = int(m.group(1)), m.group(2), int(m.group(3))
+    try:
+        if op == '+':
+            return str(a + b)
+        if op == '-':
+            return str(a - b)
+        if op in 'xX*×':
+            return str(a * b)
+        return str(a // b)
+    except ZeroDivisionError:
+        return ''
+
+
+def solve_captcha(s: 'MyRequests', card: str) -> bool:
+    """自动过机器验证：取图 -> 识别 -> 提交，失败就换一张重试。
+
+    答错无惩罚（实测只重新出题），所以直接重试到成功为止。
+    返回 True 表示验证已通过，调用方可以重新发起解析。
+    """
+    for attempt in range(1, CAPTCHA_MAX_TRY + 1):
+        try:
+            img = s.get(f'{const.pan_domain}/toCaptchaImg/{card}')
+        except Exception as e:
+            print(f'  [{attempt}/{CAPTCHA_MAX_TRY}] 取验证码失败: {e.__class__.__name__}', flush=True)
+            continue
+        answer = ocr_captcha(img.content)
+        if not answer:
+            print(f'  [{attempt}/{CAPTCHA_MAX_TRY}] 验证码识别失败，换一张重试', flush=True)
+            continue
+        try:
+            rep = s.post(f'{const.pan_domain}/doCaptcha',
+                         data={'card': card, 'answer': answer},
+                         headers={'Referer': f'{const.pan_domain}/toCaptcha/{card}'},
+                         allow_redirects=False)
+        except Exception as e:
+            print(f'  [{attempt}/{CAPTCHA_MAX_TRY}] 提交验证码失败: {e.__class__.__name__}', flush=True)
+            continue
+        # 成功是 302 跳转 /；失败是 200 并重新渲染验证页
+        if rep.status_code in (301, 302, 303, 307, 308):
+            print(f'机器验证已通过（第 {attempt} 次识别，答案 {answer}）', flush=True)
+            return True
+        print(f'  [{attempt}/{CAPTCHA_MAX_TRY}] 答案 {answer} 未被接受，换一张重试', flush=True)
+    return False
 
 
 def link_expire_at(url: str) -> Optional[int]:
@@ -647,16 +731,27 @@ async def jiexi(s: MyRequests, url: str) -> dict:
         return return_data
 
     if 'toCaptcha' in rep.url:
-        print('遭遇到机器验证')
-        return_data['code'] = 403
-        return_data['msg'] = '遭遇到机器验证'
-        if platform.system() == 'Windows':
-            import pyperclip
-            pyperclip.copy(f'{const.pan_domain}/toCaptcha/' + os.environ['card'])
-            print('已将验证网址复制到剪贴板，程序将在5秒后退出')
-        else:
-            print(f'{const.pan_domain}/toCaptcha/' + os.environ['card'])
-        return return_data
+        print('遭遇到机器验证', flush=True)
+        captcha_url = f'{const.pan_domain}/toCaptcha/{os.environ["card"]}'
+        if solve_captcha(s, os.environ['card']):
+            # 验证通过后重新发起一次解析（验证是卡密级的，重发即可）
+            try:
+                rep = s.post_parse(data)
+            except Exception as e:
+                print('验证通过后重新解析失败', e.__class__.__name__)
+                return_data['code'] = 500
+                return_data['msg'] = '下载链接解析失败'
+                return return_data
+        if 'toCaptcha' in rep.url:
+            # 没装 ddddocr 或连续识别失败：保留原有的人工处理入口
+            return_data['code'] = 403
+            return_data['msg'] = '遭遇到机器验证'
+            if platform.system() == 'Windows':
+                import pyperclip
+                pyperclip.copy(captcha_url)
+                print('已将验证网址复制到剪贴板')
+            print(f'自动验证未通过，请手动打开完成验证：{captcha_url}', flush=True)
+            return return_data
 
     soup = BeautifulSoup(rep.text, 'html.parser')
     download_btns = soup.find_all('a', {'class': const.download_btn_class})

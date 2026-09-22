@@ -8,3 +8,8 @@ flask>=2.0.0
 # pyperclip>=1.8.2
 
 # redis 可选（tools/tool.py 中 try/except 保护）
+
+# 机器验证自动识别可选：装了 ddddocr 才会自动过解析站的算术验证码，
+# 不装则退回"打印验证链接交给人工处理"（tools/tool.py 中 try/except 保护）
+# 注意 ddddocr 会连带装上 onnxruntime 等，体积偏大（约 100-200MB）
+# ddddocr>=1.4.0
