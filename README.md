@@ -37,10 +37,12 @@ Brown提供的调用IDM代码 [教程](https://stackoverflow.com/questions/22587
 {
   "card": "卡密",
   "aria2_rpc": "如果使用idm下载，此项为空",
-  "auto_name": "false或者true #开启此功能有助于获取正确的文件名，但是会降低解析速度",
   "aria2_token": "如果使用idm下载，此项为空",
+  "auto_name": "false或者true #开启此功能有助于获取正确的文件名，但是会降低解析速度",
+  "auto_select": "false或者true #开启后自动选第一条线路(专用线路)，不再交互式询问",
   "download_path": "下载目录",
-  "proxies": "填写代理地址(http://127.0.0.1:7890)或者置空"
+  "xc": "置为 true 时只输出续传码 XC://xxx，不推送下载器",
+  "cookies": "可选。解析站前置阿里云WAF，被拦截时可粘贴浏览器的 acw_sc__v2=xxx; fingerprint=xxx"
 }
 ```
 

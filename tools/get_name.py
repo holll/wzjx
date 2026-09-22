@@ -65,7 +65,7 @@ def row_fluid(rep_text: str):
 
 def feimaoyun(url: str):
     # eg.https://www.feimaoyun.com/s/398y7f0l
-    key = url.split('/')
+    key = url.rstrip('/').split('/')[-1]  # 修复：原代码传的是整个 list，接口取不到 code
     s = MyRequests()
     rep = s.post('https://www.feimaoyun.com/index.php/down/new_detailv2', data={'code': key})
     if rep.status_code == 200:
@@ -133,7 +133,7 @@ async def get_name(url):
     if os.environ['auto_name'] == 'false':
         return input('文件名：'), url
 
-    rep = requests.models.Response
+    rep = None
     # 从链接中就可以获取文件名的网站、链接需要进行转换的网站
     if not tool.is_in_list(const.white_domain, url):
         rep = s.get(url)
@@ -142,10 +142,13 @@ async def get_name(url):
         url = rep.url
         # 针对200状态码的跳转
         soup = BeautifulSoup(rep.text, 'html.parser')
-        if soup.find('meta').get('http-equiv') == 'refresh':
+        meta = soup.find('meta')
+        if meta is not None and meta.get('http-equiv') == 'refresh':
             # META http-equiv="refresh" 实现网页自动跳转
-            url = re.search(r'[a-zA-z]+://\S*', soup.find('meta').get('content')).group()
-            rep = s.get(url)
+            m = re.search(r'[a-zA-Z]+://\S*', meta.get('content') or '')
+            if m:
+                url = m.group()
+                rep = s.get(url)
 
     try:
         if 'rosefile' in url:

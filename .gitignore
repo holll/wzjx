@@ -133,3 +133,7 @@ dmypy.json
 # config
 *.json
 !*.example.*
+
+# 解析结果样本 / 临时调试产物
+_tmp_*.py
+result_page.html

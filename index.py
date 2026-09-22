@@ -23,8 +23,8 @@ def init():
         config = json.load(f)
     for key in config:
         os.environ[key] = config[key]
-    print(f'初始化配置完成(自动获取文件名：{os.getenv("auto_name")})')
-    print(f'RPC地址：{os.environ["aria2_rpc"]}')
+    print(f'初始化配置完成(自动获取文件名：{config.get("auto_name")})')
+    print(f'RPC地址：{config.get("aria2_rpc")}')
     print(f'下载路径：{config.get("download_path")}')
     sys.stdout.flush()
 
@@ -123,8 +123,9 @@ async def main():
             if return_data['code'] != 200:
                 print(return_data['msg'])
                 continue
-            down_link = tool.select_link(return_data['links'])
-            url_domain = re.search(const.domain_reg, down_link).group()
+            down_link = tool.select_link(return_data['links'], return_data.get('lines'))
+            _m = re.search(const.domain_reg, down_link)
+            url_domain = _m.group() if _m else down_link[:60]
             print(f'获取下载链接{url_domain}...成功\n{return_data.get("end_time")}，请记得及时续费', flush=True)
             download(down_link, name[1], name[0], is_xc='')
 

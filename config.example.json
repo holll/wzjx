@@ -6,5 +6,5 @@
   "aria2_rpc": "",
   "aria2_token": "",
   "download_path": "",
-  "proxies": ""
+  "cookies": "acw_sc__v2=; fingerprint="
 }
