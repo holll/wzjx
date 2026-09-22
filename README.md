@@ -46,6 +46,47 @@ Brown提供的调用IDM代码 [教程](https://stackoverflow.com/questions/22587
 }
 ```
 
+## API 返回结构（server 模式）<a id="jump3"></a>
+
+启动：`python index.py -server`，`POST /api/parse`，请求体 `{"url": "网盘分享链接"}`。
+
+```json
+{
+  "code": 200,
+  "msg": "",
+  "cache": "miss",
+  "raw_url": "分享链接",
+  "end_time": "27/03/02 到期",
+  "expire_at": 1790066911,
+  "links": ["https://... 去重后的真实直链"],
+  "lines": [
+    {
+      "label": "👑 专用线路",
+      "route": "/direct/download",
+      "url": "https://... 与 links 中的元素对应",
+      "en": "",
+      "btn": "主力线路1",
+      "expire_at": 1790066911
+    }
+  ]
+}
+```
+
+- `code`：`200` 成功；`400` 站点提示（次数用尽、文件准备中等，原因见 `msg`）；`403` 需要人机验证；`500` 解析异常
+- `cache`：`hit` 表示命中解析缓存（缓存时长与直链有效期对齐，最长 2 小时）
+- `expire_at`：直链失效时间（UNIX 秒），读不出时为 `null`
+
+关于 `expire_at`：站点直链有 4 种形态，**只有 S3/R2 预签名形态能读出精确失效时间**
+（URL 里带 `X-Amz-Date` + `X-Amz-Expires`，实测有效期 2 小时）；站点代理链接
+（walker / s20）的参数是服务端签名或加密、源站裸链无签名，都读不出。顶层的
+`expire_at` 取本批已知值里**最晚**的一个，各线路的精确值看 `lines[].expire_at`。
+
+选线路时会自动跳过**已过期**与**明确不可用**（域名解析失败 / 服务端 4xx-5xx）的直链；
+探活结论不明的（如本机证书缺失导致的 SSL 失败）会保留而不是删掉。
+
+注意：这个过滤只发生在**选用线路**时（交互选择 / `auto_select`）。API 返回的 `links`
+保持原样不做探活（避免给每次请求增加额外网络往返），调用方可以按 `expire_at` 自行判断。
+
 ## 依赖安装教程<a id="jump2"></a>
 
 执行`pip3 install -r requirements.txt`

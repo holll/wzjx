@@ -14,6 +14,8 @@ import asyncio
 import json
 import os
 import sys
+import time
+from datetime import datetime
 
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
 
@@ -44,16 +46,24 @@ def main() -> int:
     print(f"缓存   : {result.get('cache')}")
     if result.get('end_time'):
         print(f"会员到期: {result['end_time']}")
+    exp = result.get('expire_at')
+    if exp:
+        left = (exp - time.time()) / 60
+        print(f"直链失效: {datetime.fromtimestamp(exp):%Y-%m-%d %H:%M:%S}（剩 {left:.0f} 分钟）")
+    else:
+        print("直链失效: 读不出（非 S3 预签名形态）")
 
     lines = result.get('lines', [])
     if lines:
         print(f"\n线路明细 ({len(lines)} 条):")
         for line in lines:
-            print(f"  {line['label']:<12} {line['route']:<20} {line['btn']}")
+            e = line.get('expire_at')
+            mark = f"  失效 {datetime.fromtimestamp(e):%H:%M:%S}" if e else ''
+            print(f"  {line['label']:<12} {line['route']:<20} {line['btn']}{mark}")
 
     links = result.get('links', [])
     if links:
-        print(f"\n去重直链 ({len(links)} 条, S3 预签名, 约 2 小时有效):")
+        print(f"\n去重直链 ({len(links)} 条):")
         for i, url in enumerate(links):
             print(f"  [{i}] {url}")
 

@@ -6,7 +6,9 @@ import os
 import platform
 import re
 import sys
+import time
 import traceback
+from datetime import datetime
 
 import tools.tool as tool
 from tools import const, get_name
@@ -137,6 +139,10 @@ async def main():
             _m = re.search(const.domain_reg, down_link)
             url_domain = _m.group() if _m else down_link[:60]
             print(f'获取下载链接{url_domain}...成功\n{return_data.get("end_time")}，请记得及时续费', flush=True)
+            exp = return_data.get('expire_at')
+            if exp:
+                print(f'直链失效时间 {datetime.fromtimestamp(exp):%Y-%m-%d %H:%M:%S}'
+                      f'（剩 {int((exp - time.time()) / 60)} 分钟）', flush=True)
             download(down_link, name[1], name[0], is_xc='')
 
 

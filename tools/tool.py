@@ -16,10 +16,12 @@ import os
 import platform
 import re
 import secrets
+import socket
 import threading
 import time
+from datetime import datetime, timezone
 from typing import List, Optional, Tuple, Union
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import requests
 import urllib3
@@ -77,6 +79,13 @@ WAF_ARG1_REG = re.compile(r"var\s+arg1\s*=\s*'([0-9A-Fa-f]+)'")
 # 解析接口 action 的复用时长（秒）。站点不校验路径里的订单号，实测可长期复用；
 # 取 30 分钟是为了万一将来站点改成校验时也能自愈。
 POST_URI_TTL = 1800
+
+# 解析结果缓存时长：跟着直链的实际有效期走，并限制在下面区间内。
+# 站点直链有效期 2 小时，而缓存在链接还活着时就过期会导致重复解析、白扣次数。
+# 读不出有效期时用 CACHE_TTL_DEFAULT（此前的固定值）。
+CACHE_TTL_MIN = 600
+CACHE_TTL_MAX = 7200
+CACHE_TTL_DEFAULT = 3600
 
 
 def waf_arg1(html: str) -> str:
@@ -247,6 +256,114 @@ class MyRequests:
         return self._send('POST', url, headers=headers, data=data, timeout=60)
 
 
+def link_expire_at(url: str) -> Optional[int]:
+    """从直链里读出失效时间（UNIX 秒）；读不出返回 None。
+
+    站点目前有 4 种直链形态，只有 S3/R2 预签名带标准化签名参数：
+        X-Amz-Date=20260922T062320Z & X-Amz-Expires=7200
+        → 失效时间 = X-Amz-Date + X-Amz-Expires
+    （实测 X-Amz-Date 就是签发时刻：与解析完成的时刻只差 1 秒）
+
+    其余形态读不出，不要假装能读：
+      - 站点代理 walker: 附加串是 strrev(base64(json))，明文里只有 timestamp，
+        语义未确认，不当作失效时间用
+      - 站点代理 s20: 只有 link 参数是明文，disk/s/u 是服务端签名与加密
+      - 源站裸链: 无任何签名参数
+    """
+    q = parse_qs(urlparse(url).query)
+    raw_date = q.get('X-Amz-Date', [''])[0]
+    raw_exp = q.get('X-Amz-Expires', [''])[0]
+    if not raw_date or not raw_exp.isdigit():
+        return None
+    try:
+        made = datetime.strptime(raw_date, '%Y%m%dT%H%M%SZ').replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+    return int(made.timestamp()) + int(raw_exp)
+
+
+def _is_dns_error(exc: BaseException) -> bool:
+    """异常链里是否出现域名解析失败（gaierror）"""
+    for _ in range(8):
+        if isinstance(exc, socket.gaierror):
+            return True
+        exc = exc.__cause__ or exc.__context__
+        if exc is None:
+            break
+    return False
+
+
+def probe_link(url: str, timeout: int = 12) -> Optional[bool]:
+    """探测直链可用性：True=能取数据，False=明确不可用，None=结论不明（保留）。
+
+    只取 1 字节（range: bytes=0-0）避免整包下载；站点对直链校验 Referer。
+
+    之所以要三态：SSL 校验失败是**本地信任库**的问题，不是死链 —— 实测同一链接
+    requests 报 "unable to get local issuer certificate"（站点未下发完整证书链，
+    certifi 补不上），而 curl 走系统证书库能正常 200。把它当成死链会把可用链接
+    误删，所以只对明确信号下结论：
+      - 域名解析不了 → False
+      - HTTP 4xx/5xx（服务端明确拒绝，如 walker 的 530）→ False
+      - 其它（SSL / 超时 / 连接重置）→ None
+    """
+    headers = {
+        'user-agent': MyRequests.user_agent,
+        'referer': f'{const.pan_domain}/',
+        'range': 'bytes=0-0',
+    }
+    try:
+        rep = requests.get(url, headers=headers, timeout=timeout, stream=True)
+        ok = rep.status_code in (200, 206)
+        rep.close()
+        return True if ok else False
+    except requests.exceptions.SSLError:
+        return None
+    except requests.exceptions.ConnectionError as e:
+        return False if _is_dns_error(e) else None
+    except Exception:
+        return None
+
+
+def usable_links(links: List[str], lines: Optional[List[dict]] = None,
+                 probe: bool = True) -> List[str]:
+    """筛掉已过期 / 明确不可用的直链。
+
+    先用 expire_at 做零成本过滤，再对剩下的做一次轻量探活。
+    探活后一条不剩时退回探活前的列表 —— 宁可让调用方自己试，
+    也不要把候选全清空（超时/SSL 都可能只是本地或瞬时问题）。
+    """
+    expire = {l['url']: l.get('expire_at') for l in (lines or []) if l.get('url')}
+    now = int(time.time())
+    fresh = [u for u in links if not (expire.get(u) and expire[u] < now)]
+    if not fresh:
+        print(f'提示：{len(links)} 条直链的签名均已过期', flush=True)
+        return links
+    dropped = len(links) - len(fresh)
+
+    if not probe or len(fresh) == 1:
+        if dropped:
+            print(f'已跳过 {dropped} 条过期直链，剩余 {len(fresh)} 条', flush=True)
+        return fresh
+
+    verdict = {u: probe_link(u) for u in fresh}
+    alive = [u for u in fresh if verdict[u] is not False]
+    dead = [u for u in fresh if verdict[u] is False]
+
+    if not alive:
+        print(f'提示：{len(fresh)} 条直链探活均失败，按原样交回（可能只是瞬时故障）', flush=True)
+        return fresh
+
+    if dropped or dead:
+        detail = '、'.join(_host_of(u) for u in dead)
+        print(f'已跳过 {dropped} 条过期 + {len(dead)} 条不可用直链'
+              + (f'（不可用：{detail}）' if detail else ''), flush=True)
+    unknown = [u for u in fresh if verdict[u] is None]
+    if unknown:
+        print('以下直链探活结论不明（多为本机证书/网络问题，仍保留）：'
+              + '、'.join(_host_of(u) for u in unknown), flush=True)
+    return alive
+
+
 def tab_label_map(soup: BeautifulSoup) -> dict:
     """tab-pane id -> 标签名。
 
@@ -285,6 +402,7 @@ def parse_download_lines(soup: BeautifulSoup, buttons=None) -> Tuple[List[dict],
     seen = set()
 
     def _add(line: dict, direct: str):
+        line['expire_at'] = link_expire_at(direct)   # 读不出有效期的形态为 None
         lines.append(line)
         if direct and direct not in seen:
             seen.add(direct)
@@ -417,42 +535,72 @@ def dump_fail_page(rep, soup, return_data: dict) -> None:
 
 
 def select_link(links: list, lines: Optional[list] = None, auto_select: Optional[bool] = None) -> str:
-    """选择一条直链。多线路时交互式选择，auto_select 开启时自动挑一条。"""
+    """选择一条直链。
+
+    多线路时交互式选择，auto_select 开启时自动挑一条。
+    两种情况都先筛掉已过期 / 取不到数据的直链 —— 站点返回的直链里
+    确实混着死链（实测有域名已无法解析的源站裸链），按顺序无脑取第一条会踩坑。
+    """
     if auto_select is None:
         # 配置值是字符串，不能直接 bool()：bool('false') 结果也是 True
         auto_select = str(os.getenv('auto_select', '')).strip().lower() in ('1', 'true', 'yes', 'on')
 
+    lines = lines or []
+    expire = {l['url']: l.get('expire_at') for l in lines if l.get('url')}
+    candidates = usable_links(links, lines)
+
     if auto_select:
-        # 站点按线路优先级返回，第一条即专用线路，优先使用
-        picked = links[0]
+        picked = candidates[0]
         print(f'已自动选择直链：{_host_of(picked)}', flush=True)
         return picked
 
-    if len(links) == 1:
-        return links[0]
+    if len(candidates) == 1:
+        return candidates[0]
 
     label_map = {}
-    if lines:
-        for line in lines:
-            label_map.setdefault(line['url'], line['label'])
+    for line in lines:
+        label_map.setdefault(line['url'], line['label'])
+    now = int(time.time())
 
     print('可选的下载服务器：')
-    for i, link in enumerate(links):
+    for i, link in enumerate(candidates):
         label = label_map.get(link, '')
-        print(f'[{i}]: {_host_of(link)}' + (f'  ({label})' if label else ''))
+        exp = expire.get(link)
+        # 已过期的在 usable_links 里就被滤掉了，这里显示的是剩余有效期
+        left = f'  剩余 {int((exp - now) / 60)} 分钟' if exp else ''
+        print(f'[{i}]: {_host_of(link)}' + (f'  ({label})' if label else '') + left)
     while True:
         choice = input('请输入序号选择下载服务器：')
         if not choice.isdecimal():
-            print(f'请输入数字序号！0-{len(links) - 1}')
+            print(f'请输入数字序号！0-{len(candidates) - 1}')
             continue
         choice = int(choice)
-        if 0 <= choice < len(links):
-            return links[choice]
-        print(f'请输入正确的序号！0-{len(links) - 1}')
+        if 0 <= choice < len(candidates):
+            return candidates[choice]
+        print(f'请输入正确的序号！0-{len(candidates) - 1}')
+
+
+def cache_ttl_for(expire_at: Optional[int]) -> int:
+    """按直链有效期决定解析结果缓存多久。
+
+    站点直链有效期 2 小时，而缓存此前固定 1 小时 —— 链接还活着就重新解析，
+    白扣一次次数。这里跟有效期对齐，并夹在 [CACHE_TTL_MIN, CACHE_TTL_MAX] 内；
+    读不出有效期时退回默认值。
+    """
+    if not expire_at:
+        return CACHE_TTL_DEFAULT
+    return max(CACHE_TTL_MIN, min(CACHE_TTL_MAX, expire_at - int(time.time())))
 
 
 async def jiexi(s: MyRequests, url: str) -> dict:
-    """解析网赚盘链接，获取真实下载地址"""
+    """解析网赚盘链接，获取真实下载地址。
+
+    return_data 主要字段：
+      code/msg/cache/raw_url/links/lines/end_time
+      expire_at: 本批已知直链里**最晚**的失效时间（UNIX 秒）。
+                 只有 S3/R2 预签名形态读得出（见 link_expire_at）；
+                 全部读不出时为 None。各条线路的精确值另见 lines[i]['expire_at']。
+    """
     return_data = {'code': 200, 'raw_url': url, 'links': [], 'lines': [],
                    'msg': '', 'cache': 'miss'}
     if not url.endswith('#re') and hasRedis:
@@ -468,6 +616,7 @@ async def jiexi(s: MyRequests, url: str) -> dict:
                 meta = json.loads(meta)
                 return_data['end_time'] = meta.get('end_time', '')
                 return_data['lines'] = meta.get('lines', [])
+                return_data['expire_at'] = meta.get('expire_at')
             return return_data
     else:
         url = url.replace('#re', '')
@@ -545,6 +694,9 @@ async def jiexi(s: MyRequests, url: str) -> dict:
 
     return_data['lines'] = lines
     return_data['links'] = links
+    # 本批直链里最晚的已知失效时间：过了它整批就都不可用了（读不出的形态不计入）
+    known = [l['expire_at'] for l in lines if l.get('expire_at')]
+    return_data['expire_at'] = max(known) if known else None
 
     if not links:
         return_data['code'] = 400
@@ -552,8 +704,14 @@ async def jiexi(s: MyRequests, url: str) -> dict:
         dump_fail_page(rep, soup, return_data)
     elif hasRedis:
         # 同步 redis 库，不使用 await（原代码的 await 会导致 TypeError）
+        ttl = cache_ttl_for(return_data['expire_at'])
+        # 先删旧值再写：否则残留的旧直链会和新值混在一个 list 里
+        r_l.delete(url)
         r_l.rpush(url, *links)
-        r_l.expire(url, 3600)
+        r_l.expire(url, ttl)
         r_l.set(f'{url}#meta',
-                json.dumps({'end_time': return_data.get('end_time', ''), 'lines': lines}), ex=3600)
+                json.dumps({'end_time': return_data.get('end_time', ''),
+                            'lines': lines,
+                            'expire_at': return_data['expire_at']}), ex=ttl)
+        print(f'解析结果已缓存 {ttl} 秒（对齐直链有效期）', flush=True)
     return return_data
