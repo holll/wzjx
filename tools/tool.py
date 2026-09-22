@@ -16,6 +16,8 @@ import os
 import platform
 import re
 import secrets
+import threading
+import time
 from typing import List, Optional, Tuple, Union
 from urllib.parse import unquote, urlparse
 
@@ -71,6 +73,10 @@ ACW_ORDER = [0xf, 0x23, 0x1d, 0x18, 0x21, 0x10, 0x1, 0x26, 0xa, 0x9, 0x13, 0x1f,
              0xe, 0x15, 0x20, 0x1a, 0x2, 0x1e, 0x7, 0x4, 0x11, 0x5, 0x3, 0x1c,
              0x22, 0x25, 0xc, 0x24]
 WAF_ARG1_REG = re.compile(r"var\s+arg1\s*=\s*'([0-9A-Fa-f]+)'")
+
+# 解析接口 action 的复用时长（秒）。站点不校验路径里的订单号，实测可长期复用；
+# 取 30 分钟是为了万一将来站点改成校验时也能自愈。
+POST_URI_TTL = 1800
 
 
 def waf_arg1(html: str) -> str:
@@ -134,11 +140,11 @@ class MyRequests:
         self.session.mount('https://', HTTPAdapter(max_retries=MyRequests.retries))
         # 懒加载：延迟到首次使用时获取解析接口地址
         self._post_uri = None
+        self._post_uri_at = 0.0
+        self._post_uri_lock = threading.Lock()
 
-    def _ensure_post_uri(self):
-        """懒加载：首次调用时获取解析接口地址，避免构造函数中阻塞网络请求"""
-        if self._post_uri is not None:
-            return
+    def _fetch_post_uri(self) -> str:
+        """从首页解析出接口 action；失败时把首页落盘并打出诊断，然后抛错"""
         rep = None
         soup = None
         try:
@@ -147,7 +153,7 @@ class MyRequests:
             action = find_post_uri(soup, rep.text)
             if not action:
                 raise RuntimeError('首页未找到解析接口 form/action')
-            self._post_uri = action
+            return action
         except Exception as e:
             print(f'获取解析接口地址失败: {e.__class__.__name__}: {e}', flush=True)
             if rep is not None:
@@ -158,12 +164,51 @@ class MyRequests:
                     print(f'  {hint}', flush=True)
             raise
 
+    def _ensure_post_uri(self, force: bool = False) -> str:
+        """取解析接口 action（带锁，server 模式多请求共用同一实例）。
+
+        实测同一个 action 可以反复 POST：连续两次成功解析都能拿到下载按钮，
+        甚至把 order id 换成伪造值也照样出结果 —— 路径里的订单号并不参与校验，
+        根本不是「一次性的」。所以按 TTL 缓存复用，省掉每次解析前多打一次首页
+        （机房出口 IP 上这一步还会额外撞一次 WAF 挑战）。
+
+        缓存过期或 force 时重新获取；刷新失败但手里有旧值时降级沿用旧值，
+        避免首页被 WAF 挡住时整个解析直接失败。
+        """
+        with self._post_uri_lock:
+            if (not force and self._post_uri
+                    and time.time() - self._post_uri_at < POST_URI_TTL):
+                return self._post_uri
+            try:
+                action = self._fetch_post_uri()
+            except Exception:
+                if self._post_uri:
+                    print(f'首页获取失败，降级沿用上次的接口地址 {self._post_uri}', flush=True)
+                    return self._post_uri
+                raise
+            if action != self._post_uri:
+                print(f'已刷新解析接口地址: {action}', flush=True)
+            self._post_uri = action
+            self._post_uri_at = time.time()
+            return action
+
     @property
-    def post_uri(self):
-        """每次解析都要重新取，因为 action 里的订单 ID 是一次性的"""
-        self._post_uri = None
-        self._ensure_post_uri()
-        return self._post_uri
+    def post_uri(self) -> str:
+        return self._ensure_post_uri()
+
+    def refresh_post_uri(self) -> str:
+        """强制重新获取接口地址（提交失败时兜底重试用）"""
+        return self._ensure_post_uri(force=True)
+
+    def post_parse(self, data: dict) -> requests.models.Response:
+        """提交解析表单；用缓存里的接口地址，请求异常时刷新地址再试一次"""
+        headers = {'Referer': const.pan_domain + '/', 'Origin': const.pan_domain}
+        try:
+            return self.post(f'{const.pan_domain}{self.post_uri}', data=data, headers=headers)
+        except Exception as e:
+            print(f'提交解析请求失败({e.__class__.__name__})，刷新接口地址后重试一次', flush=True)
+            return self.post(f'{const.pan_domain}{self.refresh_post_uri()}',
+                             data=data, headers=headers)
 
     def _merge_headers(self, extra_headers):
         """合并 session headers 和额外 headers，使用副本避免引用污染"""
@@ -445,8 +490,7 @@ async def jiexi(s: MyRequests, url: str) -> dict:
         'card': os.environ['card']
     }
     try:
-        rep = s.post(f'{const.pan_domain}{s.post_uri}', data=data,
-                     headers={'Referer': const.pan_domain + '/', 'Origin': const.pan_domain})
+        rep = s.post_parse(data)
     except Exception as e:
         print('下载链接解析失败', e.__class__.__name__)
         return_data['code'] = 500
